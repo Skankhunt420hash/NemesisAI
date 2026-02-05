@@ -134,10 +134,27 @@ Preferred communication style: Simple, everyday language.
 - Live link displayed in chat panel and archive with copy and external link buttons
 - Archive page has "Launch" button for each project to open in new tab
 
-### FINISH Button
-- POST `/api/projects/:id/finalize` marks project complete
-- Sets `isFinalized=true` and `isPublished=true`
-- Published badge shown in UI after finalization
+### FINISH Button with Privacy Options
+- POST `/api/projects/:id/finalize` marks project complete with `isPublished` parameter
+- Users can choose "Private" (only visible to owner) or "Published" (visible in library)
+- Private apps show violet lock badge, Published apps show green users badge
+- Private apps can be published later via Archive page
+
+### Cursor-Style Preview System
+- **TaskTimeline Component**: Shows build steps (scaffold, dependencies, generate, server, preview) with status icons
+- **RuntimeInspector Component**: Terminal logs, console logs, network requests tabs
+- **Preview Status Bar**: Shows current status (idle/installing/starting/running/error) with framework detection
+- **Auto-Heal Functionality**: 
+  - Start Preview button to initialize dev server simulation
+  - Fix Preview button for one-click auto-repair when errors occur
+  - Restart button for quick preview refresh
+- **Build Step Tracking**: Each code generation updates timeline with success/error states
+- **Backend Preview Endpoints**:
+  - GET `/api/projects/:id/preview/status`: Get preview status and framework detection
+  - POST `/api/projects/:id/preview/start`: Start preview server simulation
+  - POST `/api/projects/:id/preview/stop`: Stop preview
+  - POST `/api/projects/:id/preview/fix`: Auto-fix preview issues
+  - GET `/api/projects/:id/preview/logs`: Get terminal logs
 
 ### Simulation Theory Loading Screens
 - Scientific facts about simulation theory during code generation

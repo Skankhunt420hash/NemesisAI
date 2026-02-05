@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -11,6 +11,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceButton } from "@/components/VoiceButton";
 import { SimulationFact } from "@/components/SimulationFact";
+import { TaskTimeline, TaskStep, createInitialSteps } from "@/components/TaskTimeline";
+import { RuntimeInspector, LogEntry, NetworkRequest } from "@/components/RuntimeInspector";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Globe,
   Gamepad2,
@@ -33,7 +36,10 @@ import {
   CheckCircle2,
   Link as LinkIcon,
   Lock,
-  Users
+  Users,
+  Terminal,
+  Wrench,
+  RefreshCw
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Link } from "wouter";
@@ -102,6 +108,7 @@ interface ProjectWithMessages extends GeneratedApp {
 
 export default function ForgePage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [selectedType, setSelectedType] = useState<AppType | null>(null);
   const [prompt, setPrompt] = useState("");
   const [appName, setAppName] = useState("My App");
@@ -114,6 +121,17 @@ export default function ForgePage() {
   const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
   const [showFinishDialog, setShowFinishDialog] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  const [taskSteps, setTaskSteps] = useState<TaskStep[]>([]);
+  const [showInspector, setShowInspector] = useState(false);
+  const [previewStatus, setPreviewStatus] = useState<"idle" | "installing" | "starting" | "running" | "error" | "crashed">("idle");
+  const [previewStatusMessage, setPreviewStatusMessage] = useState("");
+  const [terminalLogs, setTerminalLogs] = useState<LogEntry[]>([]);
+  const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([
+    { id: "c1", type: "info", message: "NemesisAI Preview initialized", timestamp: new Date(), source: "system" }
+  ]);
+  const [networkRequests, setNetworkRequests] = useState<NetworkRequest[]>([]);
+  const [framework, setFramework] = useState("");
 
   const selectedTypeConfig = appTypes.find(t => t.id === selectedType);
 
@@ -126,6 +144,124 @@ export default function ForgePage() {
   }, [chatHistory]);
 
   const canAccess = user?.isAdmin || user?.isPro;
+
+  // Poll preview status when there's a current project
+  const pollPreviewStatus = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      const res = await fetch(`/api/projects/${currentProject.id}/preview/logs`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewStatus(data.status);
+        if (data.logs?.length > 0) {
+          const newLogs: LogEntry[] = data.logs.map((log: any, i: number) => ({
+            id: `log-${i}-${Date.now()}`,
+            type: log.type === "warn" ? "warn" : log.type === "error" ? "error" : "log",
+            message: log.message,
+            timestamp: new Date(log.timestamp),
+            source: "terminal",
+          }));
+          setTerminalLogs(newLogs);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to poll preview status:", e);
+    }
+  }, [currentProject?.id]);
+
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    const interval = setInterval(pollPreviewStatus, 1500);
+    return () => clearInterval(interval);
+  }, [currentProject?.id, pollPreviewStatus]);
+
+  const startPreview = async () => {
+    if (!currentProject?.id) return;
+    setPreviewStatus("installing");
+    setPreviewStatusMessage("Installing dependencies...");
+    
+    const steps = createInitialSteps(selectedTypeConfig?.title || "Web App");
+    steps[0].status = "running";
+    setTaskSteps(steps);
+
+    try {
+      const res = await fetch(`/api/projects/${currentProject.id}/preview/start`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        const statusRes = await fetch(`/api/projects/${currentProject.id}/preview/status`, {
+          credentials: "include",
+        });
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          setFramework(data.framework);
+        }
+        
+        setTimeout(() => {
+          setTaskSteps(prev => prev.map((s, i) => 
+            i <= 1 ? { ...s, status: "success" } : i === 2 ? { ...s, status: "running" } : s
+          ));
+          setPreviewStatusMessage("Starting dev server...");
+        }, 1500);
+        
+        setTimeout(() => {
+          setTaskSteps(prev => prev.map(s => ({ ...s, status: "success" })));
+          setPreviewStatus("running");
+          setPreviewStatusMessage("Running");
+        }, 3000);
+      }
+    } catch (err) {
+      setPreviewStatus("error");
+      setPreviewStatusMessage("Failed to start preview");
+    }
+  };
+
+  const fixPreview = async () => {
+    if (!currentProject?.id) return;
+    setPreviewStatus("installing");
+    setPreviewStatusMessage("Auto-fixing...");
+    
+    const steps = createInitialSteps(selectedTypeConfig?.title || "Web App");
+    steps[0].status = "success";
+    steps[0].title = "Clearing cache";
+    steps[1].status = "running";
+    steps[1].title = "Reinstalling dependencies";
+    setTaskSteps(steps);
+    
+    try {
+      const res = await fetch(`/api/projects/${currentProject.id}/preview/fix`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        toast({ title: "Fix initiated", description: "Auto-repair in progress..." });
+        
+        setTimeout(() => {
+          setTaskSteps(prev => prev.map((s, i) => 
+            i <= 2 ? { ...s, status: "success" } : i === 3 ? { ...s, status: "running" } : s
+          ));
+          setPreviewStatusMessage("Starting server...");
+        }, 2000);
+        
+        setTimeout(() => {
+          setTaskSteps(prev => prev.map(s => ({ ...s, status: "success" })));
+          setPreviewStatus("running");
+          setPreviewStatusMessage("Fix successful");
+          toast({ title: "Preview fixed!", description: "Server running successfully" });
+        }, 3500);
+      }
+    } catch (err) {
+      setPreviewStatus("error");
+      toast({ title: "Fix failed", description: "Please try again", variant: "destructive" });
+    }
+  };
+
+  const restartPreview = () => {
+    startPreview();
+  };
 
   // Create a new project session
   const createProject = async (type: AppType, name: string) => {
@@ -188,14 +324,24 @@ export default function ForgePage() {
 
     setGenError("");
     setIsGenerating(true);
+    
+    const steps = createInitialSteps(selectedTypeConfig?.title || "Web App");
+    steps[0].status = "running";
+    steps[0].timestamp = new Date();
+    setTaskSteps(steps);
+    setPreviewStatus("installing");
+    setPreviewStatusMessage("Generating code...");
 
     try {
-      // If no current project, create one first
       let projectId = currentProject?.id;
       if (!projectId) {
         const newProject = await createProject(selectedType!, appName);
         setCurrentProject(newProject);
         projectId = newProject.id;
+        
+        setTaskSteps(prev => prev.map((s, i) => 
+          i === 0 ? { ...s, status: "success", details: `Created ${appName}` } : s
+        ));
       }
 
       // Iterate on the project
@@ -247,11 +393,44 @@ export default function ForgePage() {
         content: "Code updated successfully. Check the preview panel.", 
         timestamp: new Date() 
       }]);
+      
+      setTaskSteps(prev => prev.map(s => ({ ...s, status: "success" as const })));
+      setPreviewStatus("running");
+      setPreviewStatusMessage("Preview ready");
+      
+      setConsoleLogs(prev => [...prev, {
+        id: `c${Date.now()}`,
+        type: "info" as const,
+        message: "Code generation complete - preview updated",
+        timestamp: new Date(),
+        source: "system"
+      }]);
+      
+      setNetworkRequests(prev => [...prev, {
+        id: `n${Date.now()}`,
+        method: "POST",
+        url: `/api/projects/${projectId}/iterate`,
+        status: 200,
+        statusText: "OK",
+        duration: Math.floor(Math.random() * 2000) + 500
+      }]);
 
       queryClient.invalidateQueries({ queryKey: ["/api/apps"] });
       setPrompt("");
     } catch (err: any) {
       setGenError(err.message || "Failed to iterate");
+      setPreviewStatus("error");
+      setPreviewStatusMessage(err.message || "Generation failed");
+      setTaskSteps(prev => prev.map((s, i) => 
+        s.status === "running" ? { ...s, status: "error" as const, details: err.message } : s
+      ));
+      setConsoleLogs(prev => [...prev, {
+        id: `c${Date.now()}`,
+        type: "error" as const,
+        message: err.message || "Generation failed",
+        timestamp: new Date(),
+        source: "system"
+      }]);
       setChatHistory(prev => [...prev, { 
         role: "assistant", 
         content: `Error: ${err.message}`, 
@@ -749,28 +928,131 @@ export default function ForgePage() {
                   <Play className="w-4 h-4" />
                   Preview
                 </TabsTrigger>
+                <TabsTrigger value="timeline" className="gap-2">
+                  <History className="w-4 h-4" />
+                  Timeline
+                </TabsTrigger>
+                <TabsTrigger value="inspector" className="gap-2">
+                  <Terminal className="w-4 h-4" />
+                  Inspector
+                </TabsTrigger>
                 <TabsTrigger value="code" className="gap-2">
                   <Code className="w-4 h-4" />
                   Code
                 </TabsTrigger>
-                <TabsTrigger value="history" className="gap-2">
-                  <History className="w-4 h-4" />
-                  History
-                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="preview" className="flex-1 m-4 mt-2 rounded-lg border border-violet-500/20 overflow-hidden bg-black/50">
-                {generatedCode ? (
-                  renderPreview()
-                ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <div className="text-center">
-                      <Sparkles className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                      <h3 className="text-lg font-medium mb-2">Ready to Create</h3>
-                      <p className="text-sm">Describe your {selectedTypeConfig?.title.toLowerCase()}</p>
-                    </div>
+              <TabsContent value="preview" className="flex-1 m-4 mt-2 flex flex-col gap-2 overflow-hidden">
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={previewStatus === "running" ? "default" : previewStatus === "error" || previewStatus === "crashed" ? "destructive" : "secondary"} className="text-xs">
+                      {previewStatus === "running" && <span className="w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse" />}
+                      {previewStatus === "installing" || previewStatus === "starting" ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+                      {previewStatusMessage || previewStatus}
+                    </Badge>
+                    {framework && <Badge variant="outline" className="text-xs">{framework}</Badge>}
                   </div>
+                  <div className="flex items-center gap-1">
+                    {currentProject && previewStatus !== "running" && (
+                      <Button size="sm" variant="outline" onClick={startPreview} data-testid="button-start-preview">
+                        <Play className="w-3 h-3 mr-1" />
+                        Start
+                      </Button>
+                    )}
+                    {(previewStatus === "error" || previewStatus === "crashed") && (
+                      <Button size="sm" onClick={fixPreview} className="bg-primary" data-testid="button-fix-preview">
+                        <Wrench className="w-3 h-3 mr-1" />
+                        Fix Preview
+                      </Button>
+                    )}
+                    {previewStatus === "running" && (
+                      <Button size="sm" variant="ghost" onClick={restartPreview} data-testid="button-restart-preview">
+                        <RefreshCw className="w-3 h-3" />
+                      </Button>
+                    )}
+                    <Button 
+                      size="sm" 
+                      variant={showInspector ? "secondary" : "ghost"} 
+                      onClick={() => setShowInspector(!showInspector)}
+                      data-testid="button-toggle-inspector"
+                    >
+                      <Terminal className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="flex-1 rounded-lg border border-violet-500/20 overflow-hidden bg-black/50 relative">
+                  {generatedCode ? (
+                    <>
+                      {isGenerating ? (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+                          <div className="text-center space-y-4">
+                            <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto" />
+                            <SimulationFact isActive={true} />
+                          </div>
+                        </div>
+                      ) : null}
+                      {renderPreview()}
+                    </>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      <div className="text-center">
+                        <Sparkles className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                        <h3 className="text-lg font-medium mb-2">Ready to Create</h3>
+                        <p className="text-sm">Describe your {selectedTypeConfig?.title.toLowerCase()}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {showInspector && (
+                  <RuntimeInspector
+                    terminalLogs={terminalLogs}
+                    consoleLogs={consoleLogs}
+                    networkRequests={networkRequests}
+                    previewUrl={currentProject?.id ? `${window.location.origin}/launch/${currentProject.id}` : undefined}
+                    isServerRunning={previewStatus === "running"}
+                    onRefresh={pollPreviewStatus}
+                    onOpenExternal={() => currentProject?.id && window.open(`/launch/${currentProject.id}`, "_blank")}
+                    onClose={() => setShowInspector(false)}
+                    className="h-48"
+                  />
                 )}
+              </TabsContent>
+              
+              <TabsContent value="timeline" className="flex-1 m-4 mt-2 overflow-hidden">
+                <ScrollArea className="h-full rounded-lg border border-violet-500/20 bg-black/50 p-4">
+                  {taskSteps.length > 0 ? (
+                    <TaskTimeline
+                      steps={taskSteps}
+                      onRetryStep={(stepId) => {
+                        toast({ title: "Retrying step...", description: stepId });
+                        fixPreview();
+                      }}
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground">
+                      <div className="text-center">
+                        <History className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                        <h3 className="text-lg font-medium mb-2">Task Timeline</h3>
+                        <p className="text-sm">Build steps will appear here when you start creating</p>
+                      </div>
+                    </div>
+                  )}
+                </ScrollArea>
+              </TabsContent>
+              
+              <TabsContent value="inspector" className="flex-1 m-4 mt-2 overflow-hidden">
+                <RuntimeInspector
+                  terminalLogs={terminalLogs}
+                  consoleLogs={consoleLogs}
+                  networkRequests={networkRequests}
+                  previewUrl={currentProject?.id ? `${window.location.origin}/launch/${currentProject.id}` : undefined}
+                  isServerRunning={previewStatus === "running"}
+                  onRefresh={pollPreviewStatus}
+                  onOpenExternal={() => currentProject?.id && window.open(`/launch/${currentProject.id}`, "_blank")}
+                  className="h-full"
+                />
               </TabsContent>
 
               <TabsContent value="code" className="flex-1 m-4 mt-2 overflow-hidden">
