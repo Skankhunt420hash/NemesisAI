@@ -1,8 +1,14 @@
-# NemesisAI - App Creator Platform
+# NemesisAI - The Ultimate Creator
 
 ## Overview
 
-NemesisAI is an AI-powered application generator that allows users to describe an app in natural language and receive generated code. The platform features user authentication, a subscription-based Pro tier with Stripe integration, and supports multiple programming languages for code generation.
+NemesisAI is a high-end AI-powered SaaS platform ($19/month) for iterative app development. Users can describe apps using text or voice commands and receive generated code with live preview. The platform features:
+
+- **Voice Control**: Speech-to-text using OpenAI Whisper API for hands-free development
+- **Split-Screen Interface**: Chat/voice panel on left, live preview on right
+- **Incremental Updates**: AI modifies code step-by-step based on user commands
+- **Multi-Platform Export**: Web apps with instant preview, React Native ZIP packages
+- **"Eternal Night" Design**: Pure black background, gold accents, violet glow effects
 
 The application follows a full-stack TypeScript architecture with a React frontend and Express backend, using PostgreSQL for data persistence.
 
@@ -63,7 +69,29 @@ Preferred communication style: Simple, everyday language.
 - Drizzle ORM for type-safe queries
 
 ### Replit Integrations
-- Audio processing utilities for voice chat (speech-to-text, text-to-speech)
+- Audio transcription using OpenAI gpt-4o-mini-transcribe model
 - Image generation capabilities
 - Batch processing utilities with rate limiting
 - Chat storage and routing helpers
+
+## Recent Changes (Feb 2026)
+
+### Voice Control Feature
+- Added `useVoiceRecorder` hook for microphone recording
+- Created `/api/transcribe` endpoint using OpenAI Whisper API
+- VoiceButton component with recording state indicators
+- Audio converted to WAV via FFmpeg before transcription
+
+### Split-Screen Dashboard
+- Left panel (400px): Chat history, voice/text input, app settings
+- Right panel: Tabbed interface with Live Preview, Code, and History
+- SimulationFact component shows Matrix-style messages during generation
+
+### Incremental Code Updates
+- Context-aware prompting detects modification commands
+- Preserves existing code when user requests changes
+- Supports commands: change, update, modify, add, remove, fix
+
+### Pricing
+- Pro subscription: $19/month (changed from $29)
+- Features: Voice control, live preview, web/native export
