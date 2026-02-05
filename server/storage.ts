@@ -18,7 +18,7 @@ export interface IStorage {
   createApp(app: InsertGeneratedApp): Promise<GeneratedApp>;
   updateApp(id: number, userId: number, data: Partial<GeneratedApp>): Promise<GeneratedApp | undefined>;
   updateAppCode(id: number, userId: number, code: string): Promise<GeneratedApp | undefined>;
-  finalizeApp(id: number, userId: number): Promise<GeneratedApp | undefined>;
+  finalizeApp(id: number, userId: number, isPublished?: boolean): Promise<GeneratedApp | undefined>;
   getAllApps(): Promise<GeneratedApp[]>;
   getPublishedApps(): Promise<GeneratedApp[]>;
   getProjectMessages(projectId: number): Promise<ProjectMessage[]>;
@@ -120,12 +120,12 @@ class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async finalizeApp(id: number, userId: number): Promise<GeneratedApp | undefined> {
+  async finalizeApp(id: number, userId: number, isPublished: boolean = false): Promise<GeneratedApp | undefined> {
     const [app] = await db.select().from(generatedApps).where(eq(generatedApps.id, id));
     if (!app || app.userId !== userId) return undefined;
 
     const [updated] = await db.update(generatedApps)
-      .set({ isFinalized: true, isPublished: true, updatedAt: new Date() })
+      .set({ isFinalized: true, isPublished, updatedAt: new Date() })
       .where(eq(generatedApps.id, id))
       .returning();
     return updated;

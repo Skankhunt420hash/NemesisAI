@@ -637,7 +637,10 @@ Rules:
         return res.status(400).json({ error: "Invalid project ID" });
       }
 
-      const project = await storage.finalizeApp(projectId, req.session.userId!);
+      // Get isPublished from request body, default to false (private)
+      const isPublished = req.body?.isPublished === true;
+
+      const project = await storage.finalizeApp(projectId, req.session.userId!, isPublished);
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }

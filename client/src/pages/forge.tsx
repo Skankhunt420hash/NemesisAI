@@ -31,8 +31,11 @@ import {
   AlertCircle,
   Crown,
   CheckCircle2,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Lock,
+  Users
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import type { GeneratedApp, ProjectMessage } from "@shared/schema";
 
@@ -109,6 +112,7 @@ export default function ForgePage() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentProject, setCurrentProject] = useState<ProjectWithMessages | null>(null);
   const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
+  const [showFinishDialog, setShowFinishDialog] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const selectedTypeConfig = appTypes.find(t => t.id === selectedType);
@@ -264,17 +268,20 @@ export default function ForgePage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleFinalize = async () => {
+  const handleFinalize = async (makePublic: boolean) => {
     if (!currentProject) return;
     
     try {
       const res = await fetch(`/api/projects/${currentProject.id}/finalize`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublished: makePublic }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to finalize");
       const updated = await res.json();
       setCurrentProject(updated);
+      setShowFinishDialog(false);
       queryClient.invalidateQueries({ queryKey: ["/api/apps"] });
     } catch (err: any) {
       setGenError(err.message);
@@ -694,10 +701,17 @@ export default function ForgePage() {
                 {appName || "Untitled"}
               </Badge>
               {currentProject?.isFinalized && (
-                <Badge variant="outline" className="border-green-500/50 text-green-400 text-xs">
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  Published
-                </Badge>
+                currentProject.isPublished ? (
+                  <Badge variant="outline" className="border-green-500/50 text-green-400 text-xs">
+                    <Users className="w-3 h-3 mr-1" />
+                    Published
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-violet-500/50 text-violet-400 text-xs">
+                    <Lock className="w-3 h-3 mr-1" />
+                    Private
+                  </Badge>
+                )
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -715,7 +729,7 @@ export default function ForgePage() {
                   {!currentProject?.isFinalized && (
                     <Button
                       size="sm"
-                      onClick={handleFinalize}
+                      onClick={() => setShowFinishDialog(true)}
                       className="gold-gradient text-black hover:opacity-90"
                       data-testid="button-finish"
                     >
@@ -812,6 +826,46 @@ export default function ForgePage() {
           </div>
         </div>
       </main>
+
+      {/* Finish Dialog - Choose Private or Published */}
+      <Dialog open={showFinishDialog} onOpenChange={setShowFinishDialog}>
+        <DialogContent className="sm:max-w-md bg-black/95 border-violet-500/30">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-center">Finish Your App</DialogTitle>
+            <DialogDescription className="text-center text-muted-foreground">
+              How would you like to save your creation?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <button
+              onClick={() => handleFinalize(false)}
+              className="flex flex-col items-center gap-3 p-6 rounded-xl border border-violet-500/30 bg-violet-500/5 hover:bg-violet-500/10 transition-colors"
+              data-testid="button-finish-private"
+            >
+              <div className="w-12 h-12 rounded-full bg-violet-500/20 flex items-center justify-center">
+                <Lock className="w-6 h-6 text-violet-400" />
+              </div>
+              <span className="font-semibold text-white">Private</span>
+              <span className="text-xs text-muted-foreground text-center">
+                Only you can access
+              </span>
+            </button>
+            <button
+              onClick={() => handleFinalize(true)}
+              className="flex flex-col items-center gap-3 p-6 rounded-xl border border-primary/50 bg-primary/5 hover:bg-primary/10 transition-colors"
+              data-testid="button-finish-publish"
+            >
+              <div className="w-12 h-12 rounded-full gold-gradient flex items-center justify-center">
+                <Users className="w-6 h-6 text-black" />
+              </div>
+              <span className="font-semibold text-primary">Published</span>
+              <span className="text-xs text-muted-foreground text-center">
+                Share in the Library
+              </span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
