@@ -161,6 +161,47 @@ Preferred communication style: Simple, everyday language.
 - Quotes from Nick Bostrom, Max Tegmark, John Wheeler
 - Quantum mechanics, holographic principle, observer effect explanations
 
+### Enterprise AI Features (Feb 2026)
+
+#### GOD-MODE AGENT
+- Autonomous builder that detects and fixes issues without asking
+- Scans for: broken imports, wrong ports, missing root elements, JSX class→className
+- Works in loops: detect → analyze → fix → verify
+- Auto-Fix toggle for automatic or manual fix application
+- Real-time action log showing all agent activities
+
+#### LIVE SELF-TESTING AI
+- Tests the app like a human user would
+- Validates: page visibility, button click handlers, form submissions, navigation links, user flows
+- Detects: empty pages, buttons without handlers, forms without onSubmit, dead links
+- Auto-fix capability for common issues
+- Pass/Fail/Fixed summary with detailed test results
+
+#### DECISION MEMORY
+- Stores user preferences: frameworks, styling, architecture, workflow choices
+- Categories: Framework, Styling, Architecture, Workflow, Custom
+- Learns from code patterns automatically
+- Usage tracking per preference
+- Persists across sessions in localStorage
+- "After 3+ projects, feels like a personal CTO"
+
+#### VISUAL APP BRAIN (Graph View)
+- Visual map of app structure
+- Node types: Components, State, API calls, Pages, Dependencies
+- Connection lines show relationships
+- Click to select and see details
+- Filter by node type
+- Zoom in/out controls
+- Edit button for direct code access
+
+#### RUNTIME AWARENESS ENGINE
+- Real-time monitoring dashboard
+- Tracks: Dev server (online/offline/error), Build status, Memory usage, API health
+- Framework auto-detection
+- Uptime tracking
+- Error and warning detection
+- Live status indicator: Preview Live / Needs Fix / Waiting
+
 ### Pricing
 - Pro subscription: $19/month
-- Features: Voice control, live preview, all 4 app types, native export, iterative workflow
+- Features: Voice control, live preview, all 4 app types, native export, iterative workflow, AI Tools

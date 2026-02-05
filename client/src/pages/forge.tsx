@@ -13,6 +13,11 @@ import { VoiceButton } from "@/components/VoiceButton";
 import { SimulationFact } from "@/components/SimulationFact";
 import { TaskTimeline, TaskStep, createInitialSteps } from "@/components/TaskTimeline";
 import { RuntimeInspector, LogEntry, NetworkRequest } from "@/components/RuntimeInspector";
+import { GodModeAgent } from "@/components/GodModeAgent";
+import { LiveTestingAI } from "@/components/LiveTestingAI";
+import { DecisionMemory } from "@/components/DecisionMemory";
+import { VisualAppBrain } from "@/components/VisualAppBrain";
+import { RuntimeAwareness } from "@/components/RuntimeAwareness";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Globe,
@@ -39,7 +44,12 @@ import {
   Users,
   Terminal,
   Wrench,
-  RefreshCw
+  RefreshCw,
+  Bot,
+  Brain,
+  Network,
+  Activity,
+  Eye
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Link } from "wouter";
@@ -940,6 +950,10 @@ export default function ForgePage() {
                   <Code className="w-4 h-4" />
                   Code
                 </TabsTrigger>
+                <TabsTrigger value="ai-tools" className="gap-2">
+                  <Bot className="w-4 h-4" />
+                  AI Tools
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="preview" className="flex-1 m-4 mt-2 flex flex-col gap-2 overflow-hidden">
@@ -1103,6 +1117,54 @@ export default function ForgePage() {
                     </div>
                   )}
                 </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="ai-tools" className="flex-1 m-4 mt-2 overflow-hidden">
+                <div className="h-full grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-4 overflow-hidden">
+                    <div className="flex-1 min-h-0">
+                      <GodModeAgent
+                        projectId={currentProject?.id || null}
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                        onCodeFix={(newCode) => setGeneratedCode(newCode)}
+                        onStatusChange={(status) => {
+                          if (status === "success") setPreviewStatus("running");
+                          else if (status === "error") setPreviewStatus("error");
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1 min-h-0">
+                      <LiveTestingAI
+                        projectId={currentProject?.id || null}
+                        code={generatedCode}
+                        onCodeFix={(newCode) => setGeneratedCode(newCode)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4 overflow-hidden">
+                    <RuntimeAwareness
+                      projectId={currentProject?.id || null}
+                      code={generatedCode}
+                      appType={selectedType || "web"}
+                    />
+                    <div className="flex-1 min-h-0">
+                      <VisualAppBrain
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                      />
+                    </div>
+                    <DecisionMemory
+                      userId={user?.id}
+                      onPreferenceApply={(prefs) => {
+                        toast({
+                          title: "Preferences Applied",
+                          description: `${prefs.length} preferences will guide your next project`
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
               </TabsContent>
             </Tabs>
           </div>
