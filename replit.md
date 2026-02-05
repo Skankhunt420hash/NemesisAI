@@ -202,6 +202,77 @@ Preferred communication style: Simple, everyday language.
 - Error and warning detection
 - Live status indicator: Preview Live / Needs Fix / Waiting
 
+#### FILE SAVE/LOAD
+- Save unfinished apps as .nemesis files
+- Download projects for offline backup
+- Load previously saved projects
+- Quick save/load to localStorage
+- Preserves code, chat history, and preferences
+
+#### ONE-CLICK APP HARDENING
+- Production-ready button
+- Security audit (XSS, CSRF, injection)
+- ENV leak detection
+- Debug code removal
+- Bundle optimization analysis
+- Lazy loading suggestions
+- Risk score: LOW/MEDIUM/HIGH
+
+#### INTENT-DRIVEN DEVELOPMENT
+- Emotion-first development approach
+- Presets: Feel Safe, Move Fast, Feel Welcome, Have Fun, Stay Focused
+- Custom intent input
+- Auto-adjusts UX, colors, copy, flow, button placement
+- Ultra-rare emotion-driven apps
+
+#### MULTI-AGENT SWARM
+- 5 specialized agents working together:
+  - Architect Agent (System Design)
+  - UI/UX Agent (User Experience)
+  - Security Agent (Vulnerability Analysis)
+  - QA Agent (Quality Assurance)
+  - Runtime Agent (Performance)
+- Internal discussion with visible results
+- Consensus-based decisions
+
+#### EXPLAIN-MY-APP MODE
+- One-button app explanation
+- Architecture overview
+- Data flow analysis
+- Dependency mapping
+- Impact analysis for changes
+- ADHD-friendly, perfect for handoffs
+
+#### APP DNA EXPORT
+- Export architecture decisions
+- Design patterns capture
+- Build strategies
+- Agent memory preferences
+- Apply DNA to new projects
+- IP-level value preservation
+
+#### REVENUE-AWARE AI
+- Economic thinking built-in
+- Monetization suggestions
+- Conversion break detection
+- Paywall optimization
+- User flow analysis
+- Growth hacker functionality
+
+#### PANIC BUTTON / SAFE MODE
+- One-click restore to last stable state
+- Automatic checkpoint creation
+- Mark current as stable
+- Recent checkpoints history
+- Mental safety for developers
+
+#### NEMESIS CONFIDENCE SCORE™
+- Stability Score
+- Security Score
+- UX Quality Score
+- Scalability Score
+- Ship recommendation: "I would ship this."
+
 ### Pricing
 - Pro subscription: $19/month
-- Features: Voice control, live preview, all 4 app types, native export, iterative workflow, AI Tools
+- Features: Voice control, live preview, all 4 app types, native export, iterative workflow, 14 AI Tools

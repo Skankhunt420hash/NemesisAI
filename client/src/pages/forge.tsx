@@ -18,6 +18,15 @@ import { LiveTestingAI } from "@/components/LiveTestingAI";
 import { DecisionMemory } from "@/components/DecisionMemory";
 import { VisualAppBrain } from "@/components/VisualAppBrain";
 import { RuntimeAwareness } from "@/components/RuntimeAwareness";
+import { FileSaveLoad } from "@/components/FileSaveLoad";
+import { AppHardening } from "@/components/AppHardening";
+import { IntentDrivenDev } from "@/components/IntentDrivenDev";
+import { MultiAgentSwarm } from "@/components/MultiAgentSwarm";
+import { ExplainMyApp } from "@/components/ExplainMyApp";
+import { AppDnaExport } from "@/components/AppDnaExport";
+import { RevenueAwareAI } from "@/components/RevenueAwareAI";
+import { PanicButton } from "@/components/PanicButton";
+import { ConfidenceScore } from "@/components/ConfidenceScore";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Globe,
@@ -1120,9 +1129,53 @@ export default function ForgePage() {
               </TabsContent>
 
               <TabsContent value="ai-tools" className="flex-1 m-4 mt-2 overflow-hidden">
-                <div className="h-full grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-4 overflow-hidden">
-                    <div className="flex-1 min-h-0">
+                <ScrollArea className="h-full">
+                  <div className="space-y-4 pb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className="bg-gradient-to-r from-violet-600 to-purple-600">ENTERPRISE AI</Badge>
+                      <span className="text-xs text-muted-foreground">14 Specialized Tools</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <PanicButton
+                        currentCode={generatedCode}
+                        onRestore={(code) => setGeneratedCode(code)}
+                        onPreviewRestart={restartPreview}
+                      />
+                      
+                      <ConfidenceScore
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                      />
+                      
+                      <FileSaveLoad
+                        projectId={currentProject?.id || null}
+                        projectName={currentProject?.name || ""}
+                        appType={selectedType || "web"}
+                        code={generatedCode}
+                        chatHistory={chatHistory}
+                        onLoad={(snapshot) => {
+                          setGeneratedCode(snapshot.code);
+                          toast({ title: "Project Loaded", description: `Restored ${snapshot.name}` });
+                        }}
+                      />
+                      
+                      <AppHardening
+                        code={generatedCode}
+                        onCodeFix={(newCode) => setGeneratedCode(newCode)}
+                      />
+                      
+                      <MultiAgentSwarm
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                        onDecision={(decision) => {
+                          toast({
+                            title: decision.title,
+                            description: `${decision.approvedBy.length} agents approved`
+                          });
+                        }}
+                      />
+                      
                       <GodModeAgent
                         projectId={currentProject?.id || null}
                         code={generatedCode}
@@ -1133,38 +1186,64 @@ export default function ForgePage() {
                           else if (status === "error") setPreviewStatus("error");
                         }}
                       />
-                    </div>
-                    <div className="flex-1 min-h-0">
+                      
                       <LiveTestingAI
                         projectId={currentProject?.id || null}
                         code={generatedCode}
                         onCodeFix={(newCode) => setGeneratedCode(newCode)}
                       />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-4 overflow-hidden">
-                    <RuntimeAwareness
-                      projectId={currentProject?.id || null}
-                      code={generatedCode}
-                      appType={selectedType || "web"}
-                    />
-                    <div className="flex-1 min-h-0">
+                      
+                      <IntentDrivenDev
+                        code={generatedCode}
+                        onCodeUpdate={(newCode, changes) => {
+                          setGeneratedCode(newCode);
+                          toast({ title: "Intent Applied", description: `${changes.length} changes made` });
+                        }}
+                      />
+                      
+                      <ExplainMyApp
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                        projectName={currentProject?.name || ""}
+                      />
+                      
                       <VisualAppBrain
                         code={generatedCode}
                         appType={selectedType || "web"}
                       />
+                      
+                      <RuntimeAwareness
+                        projectId={currentProject?.id || null}
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                      />
+                      
+                      <RevenueAwareAI
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                        onSuggestionApply={(suggestion) => {
+                          toast({ title: "Revenue Optimization", description: suggestion });
+                        }}
+                      />
+                      
+                      <AppDnaExport
+                        code={generatedCode}
+                        appType={selectedType || "web"}
+                        projectName={currentProject?.name || "Untitled"}
+                      />
+                      
+                      <DecisionMemory
+                        userId={user?.id}
+                        onPreferenceApply={(prefs) => {
+                          toast({
+                            title: "Preferences Applied",
+                            description: `${prefs.length} preferences will guide your next project`
+                          });
+                        }}
+                      />
                     </div>
-                    <DecisionMemory
-                      userId={user?.id}
-                      onPreferenceApply={(prefs) => {
-                        toast({
-                          title: "Preferences Applied",
-                          description: `${prefs.length} preferences will guide your next project`
-                        });
-                      }}
-                    />
                   </div>
-                </div>
+                </ScrollArea>
               </TabsContent>
             </Tabs>
           </div>
