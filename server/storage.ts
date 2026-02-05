@@ -1,7 +1,8 @@
 import { db } from "./db";
-import { users, generatedApps, type User, type InsertUser, type GeneratedApp, type InsertGeneratedApp } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { users, generatedApps, projectMessages, type User, type InsertUser, type GeneratedApp, type InsertGeneratedApp, type ProjectMessage, type InsertProjectMessage } from "@shared/schema";
+import { eq, desc, sql, and } from "drizzle-orm";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -12,10 +13,16 @@ export interface IStorage {
   verifyPassword(password: string, hash: string): Promise<boolean>;
   hashPassword(password: string): Promise<string>;
   getAppsByUser(userId: number): Promise<GeneratedApp[]>;
+  getApp(id: number): Promise<GeneratedApp | undefined>;
+  getAppByViewToken(viewToken: string): Promise<GeneratedApp | undefined>;
   createApp(app: InsertGeneratedApp): Promise<GeneratedApp>;
   updateApp(id: number, userId: number, data: Partial<GeneratedApp>): Promise<GeneratedApp | undefined>;
+  updateAppCode(id: number, userId: number, code: string): Promise<GeneratedApp | undefined>;
+  finalizeApp(id: number, userId: number): Promise<GeneratedApp | undefined>;
   getAllApps(): Promise<GeneratedApp[]>;
   getPublishedApps(): Promise<GeneratedApp[]>;
+  getProjectMessages(projectId: number): Promise<ProjectMessage[]>;
+  addProjectMessage(message: InsertProjectMessage): Promise<ProjectMessage>;
   getProduct(productId: string): Promise<any>;
   listProducts(active?: boolean): Promise<any[]>;
   getSubscription(subscriptionId: string): Promise<any>;
@@ -65,11 +72,25 @@ class DatabaseStorage implements IStorage {
   async getAppsByUser(userId: number): Promise<GeneratedApp[]> {
     return db.select().from(generatedApps)
       .where(eq(generatedApps.userId, userId))
-      .orderBy(desc(generatedApps.createdAt));
+      .orderBy(desc(generatedApps.updatedAt));
+  }
+
+  async getApp(id: number): Promise<GeneratedApp | undefined> {
+    const [app] = await db.select().from(generatedApps).where(eq(generatedApps.id, id));
+    return app;
+  }
+
+  async getAppByViewToken(viewToken: string): Promise<GeneratedApp | undefined> {
+    const [app] = await db.select().from(generatedApps).where(eq(generatedApps.viewToken, viewToken));
+    return app;
   }
 
   async createApp(app: InsertGeneratedApp): Promise<GeneratedApp> {
-    const [newApp] = await db.insert(generatedApps).values(app).returning();
+    const viewToken = crypto.randomBytes(16).toString("hex");
+    const [newApp] = await db.insert(generatedApps).values({
+      ...app,
+      viewToken,
+    }).returning();
     return newApp;
   }
 
@@ -82,20 +103,53 @@ class DatabaseStorage implements IStorage {
     }
 
     const [updated] = await db.update(generatedApps)
-      .set(data)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(generatedApps.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateAppCode(id: number, userId: number, code: string): Promise<GeneratedApp | undefined> {
+    const [app] = await db.select().from(generatedApps).where(eq(generatedApps.id, id));
+    if (!app || app.userId !== userId) return undefined;
+
+    const [updated] = await db.update(generatedApps)
+      .set({ generatedCode: code, updatedAt: new Date() })
+      .where(eq(generatedApps.id, id))
+      .returning();
+    return updated;
+  }
+
+  async finalizeApp(id: number, userId: number): Promise<GeneratedApp | undefined> {
+    const [app] = await db.select().from(generatedApps).where(eq(generatedApps.id, id));
+    if (!app || app.userId !== userId) return undefined;
+
+    const [updated] = await db.update(generatedApps)
+      .set({ isFinalized: true, isPublished: true, updatedAt: new Date() })
       .where(eq(generatedApps.id, id))
       .returning();
     return updated;
   }
 
   async getAllApps(): Promise<GeneratedApp[]> {
-    return db.select().from(generatedApps).orderBy(desc(generatedApps.createdAt));
+    return db.select().from(generatedApps).orderBy(desc(generatedApps.updatedAt));
   }
 
   async getPublishedApps(): Promise<GeneratedApp[]> {
     return db.select().from(generatedApps)
       .where(eq(generatedApps.isPublished, true))
-      .orderBy(desc(generatedApps.createdAt));
+      .orderBy(desc(generatedApps.updatedAt));
+  }
+
+  async getProjectMessages(projectId: number): Promise<ProjectMessage[]> {
+    return db.select().from(projectMessages)
+      .where(eq(projectMessages.projectId, projectId))
+      .orderBy(projectMessages.createdAt);
+  }
+
+  async addProjectMessage(message: InsertProjectMessage): Promise<ProjectMessage> {
+    const [newMessage] = await db.insert(projectMessages).values(message).returning();
+    return newMessage;
   }
 
   async getProduct(productId: string) {

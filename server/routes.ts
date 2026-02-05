@@ -433,6 +433,302 @@ expo build:ios
     }
   });
 
+  // PROJECT SESSION ROUTES FOR ITERATIVE WORKFLOW
+
+  // Create a new project session
+  app.post("/api/projects", requireAuth, requirePro, async (req, res) => {
+    try {
+      const { name, appType, language } = req.body;
+      
+      const project = await storage.createApp({
+        userId: req.session.userId!,
+        name: name || "Untitled Project",
+        prompt: "",
+        generatedCode: "",
+        language: language || "react",
+        appType: appType || "web",
+        isPublished: false,
+      });
+
+      res.json(project);
+    } catch (err) {
+      console.error("Create project error:", err);
+      res.status(500).json({ error: "Failed to create project" });
+    }
+  });
+
+  // Get project with messages
+  app.get("/api/projects/:id", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ error: "Invalid project ID" });
+      }
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const messages = await storage.getProjectMessages(projectId);
+      res.json({ ...project, messages });
+    } catch (err) {
+      console.error("Get project error:", err);
+      res.status(500).json({ error: "Failed to get project" });
+    }
+  });
+
+  // Get project messages
+  app.get("/api/projects/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ error: "Invalid project ID" });
+      }
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const messages = await storage.getProjectMessages(projectId);
+      res.json(messages);
+    } catch (err) {
+      console.error("Get messages error:", err);
+      res.status(500).json({ error: "Failed to get messages" });
+    }
+  });
+
+  // Iterate on existing project code (streaming)
+  app.post("/api/projects/:id/iterate", requireAuth, requirePro, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ error: "Invalid project ID" });
+      }
+
+      const { prompt } = req.body;
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Save user message
+      await storage.addProjectMessage({
+        projectId,
+        role: "user",
+        content: prompt,
+      });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      let openai: OpenAI;
+      try {
+        openai = getOpenAIClient();
+      } catch (err: any) {
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // Build tech context based on app type
+      let techContext = "";
+      switch (project.appType) {
+        case "3d-game":
+          techContext = "Use Three.js with React Three Fiber for 3D rendering. Include OrbitControls and proper lighting.";
+          break;
+        case "vr-world":
+          techContext = "Use A-Frame for WebVR. Create an immersive VR scene with interactive elements.";
+          break;
+        case "native":
+          techContext = "Use React Native with Expo. Ensure cross-platform compatibility for iOS and Android.";
+          break;
+        default:
+          techContext = "Use React with modern hooks and Tailwind CSS for styling.";
+      }
+
+      const hasExistingCode = project.generatedCode && project.generatedCode.trim().length > 0;
+      
+      const systemPrompt = hasExistingCode
+        ? `You are an expert software developer. The user is iteratively building an app with you.
+
+Tech Stack: ${project.language}
+${techContext}
+
+Current code:
+\`\`\`
+${project.generatedCode}
+\`\`\`
+
+Rules:
+- Make ONLY the changes requested by the user
+- Preserve all existing functionality that wasn't mentioned
+- Output the complete updated code (not just the changes)
+- Keep the code clean and production-ready
+- Do not add explanations, just output code`
+        : `You are an expert software developer creating a new ${project.appType} app.
+
+Tech Stack: ${project.language}
+${techContext}
+
+Rules:
+- Generate clean, production-ready code
+- Use modern best practices
+- Output only code, no explanations
+- Make the code modular and reusable`;
+
+      const stream = await openai.chat.completions.create({
+        model: "gpt-5.2",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        stream: true,
+        max_completion_tokens: 8192,
+      });
+
+      let fullCode = "";
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          fullCode += content;
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+        }
+      }
+
+      // Update project with new code
+      await storage.updateAppCode(projectId, req.session.userId!, fullCode);
+      
+      // Update the prompt field with latest
+      await storage.updateApp(projectId, req.session.userId!, { prompt });
+
+      // Save assistant message
+      await storage.addProjectMessage({
+        projectId,
+        role: "assistant",
+        content: "Code updated successfully.",
+      });
+
+      res.write(`data: ${JSON.stringify({ done: true, projectId })}\n\n`);
+      res.end();
+    } catch (err: any) {
+      console.error("Iterate error:", err);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: err.message || "Iteration failed" })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: "Failed to iterate" });
+      }
+    }
+  });
+
+  // Finalize project
+  app.post("/api/projects/:id/finalize", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ error: "Invalid project ID" });
+      }
+
+      const project = await storage.finalizeApp(projectId, req.session.userId!);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json(project);
+    } catch (err) {
+      console.error("Finalize error:", err);
+      res.status(500).json({ error: "Failed to finalize project" });
+    }
+  });
+
+  // Public view route for live links
+  app.get("/view/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const app = await storage.getAppByViewToken(token);
+
+      if (!app) {
+        return res.status(404).send("App not found");
+      }
+
+      // Build HTML based on app type
+      let htmlContent = "";
+      const language = app.language || "react";
+
+      if (language === "aframe") {
+        htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${app.name}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <style>body { margin: 0; }</style>
+</head>
+<body>
+  ${app.generatedCode}
+</body>
+</html>`;
+      } else if (language === "threejs") {
+        htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${app.name}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/three@0.157.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.157.0/examples/js/controls/OrbitControls.js"></script>
+  <style>body { margin: 0; overflow: hidden; background: #0a0a0a; } canvas { display: block; }</style>
+</head>
+<body>
+  <script>${app.generatedCode}</script>
+</body>
+</html>`;
+      } else {
+        htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${app.name}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #0a0a0a; color: #fff; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    ${app.generatedCode}
+    
+    if (typeof App !== 'undefined') {
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    }
+  </script>
+</body>
+</html>`;
+      }
+
+      res.setHeader("Content-Type", "text/html");
+      res.send(htmlContent);
+    } catch (err) {
+      console.error("View error:", err);
+      res.status(500).send("Error loading app");
+    }
+  });
+
   app.get("/api/admin/export", requireAuth, requireAdmin, async (req, res) => {
     try {
       const apps = await storage.getAllApps();

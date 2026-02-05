@@ -23,6 +23,17 @@ export const generatedApps = pgTable("generated_apps", {
   language: text("language").default("javascript").notNull(),
   appType: text("app_type").default("web").notNull(),
   isPublished: boolean("is_published").default(false).notNull(),
+  isFinalized: boolean("is_finalized").default(false).notNull(),
+  viewToken: text("view_token"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const projectMessages = pgTable("project_messages", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => generatedApps.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -57,11 +68,21 @@ export const loginSchema = z.object({
 export const insertGeneratedAppSchema = createInsertSchema(generatedApps).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
+  viewToken: true,
+  isFinalized: true,
+});
+
+export const insertProjectMessageSchema = createInsertSchema(projectMessages).omit({
+  id: true,
+  createdAt: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type GeneratedApp = typeof generatedApps.$inferSelect;
 export type InsertGeneratedApp = z.infer<typeof insertGeneratedAppSchema>;
+export type ProjectMessage = typeof projectMessages.$inferSelect;
+export type InsertProjectMessage = z.infer<typeof insertProjectMessageSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;

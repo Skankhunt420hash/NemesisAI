@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -29,10 +29,12 @@ import {
   Package,
   Send,
   AlertCircle,
-  Crown
+  Crown,
+  CheckCircle2,
+  Link as LinkIcon
 } from "lucide-react";
 import { Link } from "wouter";
-import type { GeneratedApp } from "@shared/schema";
+import type { GeneratedApp, ProjectMessage } from "@shared/schema";
 
 type AppType = "web" | "3d-game" | "vr-world" | "native";
 
@@ -91,6 +93,10 @@ interface ChatMessage {
   timestamp: Date;
 }
 
+interface ProjectWithMessages extends GeneratedApp {
+  messages?: ProjectMessage[];
+}
+
 export default function ForgePage() {
   const { user } = useAuth();
   const [selectedType, setSelectedType] = useState<AppType | null>(null);
@@ -101,6 +107,8 @@ export default function ForgePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [currentProject, setCurrentProject] = useState<ProjectWithMessages | null>(null);
+  const [mobileView, setMobileView] = useState<"chat" | "preview">("chat");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const selectedTypeConfig = appTypes.find(t => t.id === selectedType);
@@ -113,14 +121,53 @@ export default function ForgePage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
 
-  const handleVoiceTranscript = (text: string) => {
-    setPrompt(text);
-    handleGenerate(text);
-  };
-
   const canAccess = user?.isAdmin || user?.isPro;
 
-  const handleGenerate = async (inputPrompt?: string) => {
+  // Create a new project session
+  const createProject = async (type: AppType, name: string) => {
+    const typeConfig = appTypes.find(t => t.id === type);
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        appType: type,
+        language: typeConfig?.language || "react",
+      }),
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error("Failed to create project");
+    return res.json();
+  };
+
+  // Load an existing project
+  const loadProject = async (projectId: number) => {
+    const res = await fetch(`/api/projects/${projectId}`, {
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error("Failed to load project");
+    const project: ProjectWithMessages = await res.json();
+    setCurrentProject(project);
+    setGeneratedCode(project.generatedCode);
+    setAppName(project.name);
+    
+    // Restore chat history from messages
+    if (project.messages) {
+      const history: ChatMessage[] = project.messages.map(m => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: new Date(m.createdAt),
+      }));
+      setChatHistory(history);
+    }
+  };
+
+  const handleVoiceTranscript = (text: string) => {
+    setPrompt(text);
+    handleIterate(text);
+  };
+
+  const handleIterate = async (inputPrompt?: string) => {
     const finalPrompt = inputPrompt || prompt;
     if (!finalPrompt.trim() || !selectedTypeConfig) return;
     
@@ -138,50 +185,26 @@ export default function ForgePage() {
     setGenError("");
     setIsGenerating(true);
 
-    const isIncremental = generatedCode && (
-      finalPrompt.toLowerCase().includes("change") ||
-      finalPrompt.toLowerCase().includes("update") ||
-      finalPrompt.toLowerCase().includes("modify") ||
-      finalPrompt.toLowerCase().includes("add") ||
-      finalPrompt.toLowerCase().includes("remove") ||
-      finalPrompt.toLowerCase().includes("fix")
-    );
-
-    let techContext = "";
-    switch (selectedType) {
-      case "3d-game":
-        techContext = "Use Three.js with React Three Fiber for 3D rendering. Include OrbitControls and proper lighting.";
-        break;
-      case "vr-world":
-        techContext = "Use A-Frame for WebVR. Create an immersive VR scene with interactive elements.";
-        break;
-      case "native":
-        techContext = "Use React Native with Expo. Ensure cross-platform compatibility for iOS and Android.";
-        break;
-      default:
-        techContext = "Use React with modern hooks and Tailwind CSS for styling.";
-    }
-
-    const contextPrompt = isIncremental
-      ? `Tech Stack: ${selectedTypeConfig.techStack}\n${techContext}\n\nCurrent code:\n\`\`\`${selectedTypeConfig.language}\n${generatedCode}\n\`\`\`\n\nUser request: ${finalPrompt}\n\nPlease make ONLY the requested changes while preserving all other functionality.`
-      : `Tech Stack: ${selectedTypeConfig.techStack}\n${techContext}\n\nUser request: ${finalPrompt}\n\nGenerate a complete, production-ready implementation.`;
-
     try {
-      const res = await fetch("/api/generate", {
+      // If no current project, create one first
+      let projectId = currentProject?.id;
+      if (!projectId) {
+        const newProject = await createProject(selectedType!, appName);
+        setCurrentProject(newProject);
+        projectId = newProject.id;
+      }
+
+      // Iterate on the project
+      const res = await fetch(`/api/projects/${projectId}/iterate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: contextPrompt,
-          name: appName || "Untitled App",
-          language: selectedTypeConfig.language,
-          appType: selectedType,
-        }),
+        body: JSON.stringify({ prompt: finalPrompt }),
         credentials: "include",
       });
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || "Generation failed");
+        throw new Error(errorData.error || "Iteration failed");
       }
 
       const reader = res.body?.getReader();
@@ -217,14 +240,14 @@ export default function ForgePage() {
 
       setChatHistory(prev => [...prev, { 
         role: "assistant", 
-        content: "Code generated successfully. Check the preview panel.", 
+        content: "Code updated successfully. Check the preview panel.", 
         timestamp: new Date() 
       }]);
 
       queryClient.invalidateQueries({ queryKey: ["/api/apps"] });
       setPrompt("");
     } catch (err: any) {
-      setGenError(err.message || "Failed to generate code");
+      setGenError(err.message || "Failed to iterate");
       setChatHistory(prev => [...prev, { 
         role: "assistant", 
         content: `Error: ${err.message}`, 
@@ -239,6 +262,23 @@ export default function ForgePage() {
     navigator.clipboard.writeText(generatedCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleFinalize = async () => {
+    if (!currentProject) return;
+    
+    try {
+      const res = await fetch(`/api/projects/${currentProject.id}/finalize`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to finalize");
+      const updated = await res.json();
+      setCurrentProject(updated);
+      queryClient.invalidateQueries({ queryKey: ["/api/apps"] });
+    } catch (err: any) {
+      setGenError(err.message);
+    }
   };
 
   const handleExportNative = async () => {
@@ -267,10 +307,35 @@ export default function ForgePage() {
     }
   };
 
+  const getLiveLink = () => {
+    if (!currentProject?.viewToken) return null;
+    return `${window.location.origin}/view/${currentProject.viewToken}`;
+  };
+
+  const copyLiveLink = () => {
+    const link = getLiveLink();
+    if (link) {
+      navigator.clipboard.writeText(link);
+    }
+  };
+
+  const handleSelectType = (type: AppType) => {
+    setSelectedType(type);
+    setCurrentProject(null);
+    setGeneratedCode("");
+    setChatHistory([]);
+    setGenError("");
+  };
+
+  const handleLoadFromHistory = async (app: GeneratedApp) => {
+    setSelectedType(app.appType as AppType || "web");
+    await loadProject(app.id);
+  };
+
   const renderPreview = () => {
     if (!generatedCode) return null;
     
-    const language = selectedTypeConfig?.language || "react";
+    const language = selectedTypeConfig?.language || currentProject?.language || "react";
     
     if (language === "react" || language === "javascript" || language === "html" || language === "threejs" || language === "aframe") {
       let htmlContent = "";
@@ -311,6 +376,7 @@ export default function ForgePage() {
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #0a0a0a; color: #fff; }
     * { box-sizing: border-box; }
@@ -370,7 +436,7 @@ export default function ForgePage() {
             {appTypes.map((type) => (
               <button
                 key={type.id}
-                onClick={() => setSelectedType(type.id)}
+                onClick={() => handleSelectType(type.id)}
                 className="forge-card p-6 md:p-8 text-left group cursor-pointer"
                 data-testid={`card-${type.id}`}
               >
@@ -390,6 +456,28 @@ export default function ForgePage() {
               </button>
             ))}
           </div>
+
+          {apps.length > 0 && (
+            <div className="w-full max-w-4xl px-4 mt-12">
+              <h2 className="text-lg font-semibold mb-4 text-center text-violet-300">Continue Working</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {apps.slice(0, 4).map(app => (
+                  <button
+                    key={app.id}
+                    onClick={() => handleLoadFromHistory(app)}
+                    className="forge-card p-4 text-left"
+                    data-testid={`card-continue-${app.id}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium truncate">{app.name}</span>
+                      <Badge variant="secondary" className="text-xs">{app.appType || "web"}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-1">{app.prompt || "No description"}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {!canAccess && (
             <div className="mt-8 text-center">
@@ -415,7 +503,12 @@ export default function ForgePage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setSelectedType(null)}
+                onClick={() => {
+                  setSelectedType(null);
+                  setCurrentProject(null);
+                  setGeneratedCode("");
+                  setChatHistory([]);
+                }}
                 data-testid="button-back"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -431,15 +524,35 @@ export default function ForgePage() {
               </Badge>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Mobile view toggle */}
+              <div className="flex md:hidden border rounded-md border-violet-500/30">
+                <Button
+                  variant={mobileView === "chat" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setMobileView("chat")}
+                  className="text-xs"
+                >
+                  Chat
+                </Button>
+                <Button
+                  variant={mobileView === "preview" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setMobileView("preview")}
+                  className="text-xs"
+                >
+                  Preview
+                </Button>
+              </div>
+
               {user?.isAdmin && (
-                <Badge variant="outline" className="border-primary text-primary">
+                <Badge variant="outline" className="border-primary text-primary hidden md:flex">
                   <Crown className="w-3 h-3 mr-1" />
                   Admin
                 </Badge>
               )}
               {user?.isPro && !user?.isAdmin && (
-                <Badge variant="outline" className="border-primary text-primary">
+                <Badge variant="outline" className="border-primary text-primary hidden md:flex">
                   <Crown className="w-3 h-3 mr-1" />
                   Pro
                 </Badge>
@@ -450,7 +563,8 @@ export default function ForgePage() {
       </nav>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className="w-full md:w-[400px] md:min-w-[350px] border-b md:border-b-0 md:border-r border-violet-500/20 flex flex-col bg-card/30 max-h-[50vh] md:max-h-none">
+        {/* Chat Panel - hidden on mobile when preview is active */}
+        <div className={`${mobileView === "preview" ? "hidden md:flex" : "flex"} w-full md:w-[400px] md:min-w-[350px] border-b md:border-b-0 md:border-r border-violet-500/20 flex-col bg-card/30 max-h-[50vh] md:max-h-none`}>
           <div className="p-4 border-b border-violet-500/20 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -470,6 +584,27 @@ export default function ForgePage() {
                 </Badge>
               </div>
             </div>
+
+            {/* Live Link Display */}
+            {currentProject?.viewToken && (
+              <div className="flex items-center gap-2 p-2 rounded-md bg-violet-500/10 border border-violet-500/20">
+                <LinkIcon className="w-4 h-4 text-violet-400 flex-shrink-0" />
+                <span className="text-xs text-violet-300 truncate flex-1">
+                  /view/{currentProject.viewToken.slice(0, 8)}...
+                </span>
+                <Button variant="ghost" size="sm" onClick={copyLiveLink} className="h-6 px-2">
+                  <Copy className="w-3 h-3" />
+                </Button>
+                <a
+                  href={getLiveLink() || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-violet-400 hover:text-violet-300"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            )}
           </div>
 
           <ScrollArea className="flex-1 p-4">
@@ -479,6 +614,9 @@ export default function ForgePage() {
                   <Wand2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p className="text-sm">Describe your {selectedTypeConfig?.title.toLowerCase()}</p>
                   <p className="text-xs mt-2">Use voice or text commands</p>
+                  <p className="text-xs mt-4 text-violet-400">
+                    Chat endlessly - each message builds on the last
+                  </p>
                 </div>
               )}
               
@@ -520,7 +658,7 @@ export default function ForgePage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleGenerate();
+                    handleIterate();
                   }
                 }}
                 data-testid="textarea-prompt"
@@ -532,7 +670,7 @@ export default function ForgePage() {
                 />
                 <Button
                   size="icon"
-                  onClick={() => handleGenerate()}
+                  onClick={() => handleIterate()}
                   disabled={!prompt.trim() || isGenerating}
                   data-testid="button-generate"
                 >
@@ -547,12 +685,19 @@ export default function ForgePage() {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Preview Panel - hidden on mobile when chat is active */}
+        <div className={`${mobileView === "chat" ? "hidden md:flex" : "flex"} flex-1 flex-col overflow-hidden`}>
           <div className="flex items-center justify-between p-3 border-b border-violet-500/20 bg-card/30">
             <div className="flex items-center gap-3">
               <Badge variant="secondary" className="font-mono text-xs">
                 {appName || "Untitled"}
               </Badge>
+              {currentProject?.isFinalized && (
+                <Badge variant="outline" className="border-green-500/50 text-green-400 text-xs">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  Published
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {generatedCode && (
@@ -566,10 +711,17 @@ export default function ForgePage() {
                       Export
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" data-testid="button-publish">
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Publish
-                  </Button>
+                  {!currentProject?.isFinalized && (
+                    <Button
+                      size="sm"
+                      onClick={handleFinalize}
+                      className="gold-gradient text-black hover:opacity-90"
+                      data-testid="button-finish"
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      FINISH
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -632,15 +784,22 @@ export default function ForgePage() {
                         <div
                           key={app.id}
                           className="cursor-pointer forge-card p-4"
-                          onClick={() => setGeneratedCode(app.generatedCode)}
+                          onClick={() => handleLoadFromHistory(app)}
                           data-testid={`card-app-${app.id}`}
                         >
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <span className="text-sm font-medium truncate">{app.name}</span>
-                            <Badge variant="secondary" className="text-xs">{app.language}</Badge>
+                            <div className="flex items-center gap-1">
+                              {app.isFinalized && (
+                                <Badge variant="outline" className="border-green-500/30 text-green-400 text-xs">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                </Badge>
+                              )}
+                              <Badge variant="secondary" className="text-xs">{app.language}</Badge>
+                            </div>
                           </div>
                           <p className="text-xs text-muted-foreground line-clamp-2">
-                            {app.prompt}
+                            {app.prompt || "No description"}
                           </p>
                         </div>
                       ))}

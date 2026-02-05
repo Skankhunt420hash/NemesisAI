@@ -119,6 +119,30 @@ Preferred communication style: Simple, everyday language.
 - Includes package.json, app.json, App.js, README.md
 - Ready for Expo deployment
 
+### Iterative App Factory Workflow
+- Persistent project sessions with chat history stored in database
+- POST `/api/projects` creates new project with unique viewToken
+- POST `/api/projects/:id/iterate` for SSE streaming code updates
+- Code is modified incrementally based on user prompts, not replaced
+- Chat history displayed in left panel, preserves conversation context
+- "Continue Working" section shows recent projects on Forge homepage
+
+### Live Link System
+- Each project gets a unique viewToken on creation
+- GET `/view/:token` serves live HTML preview of published apps
+- Works for React, Three.js, and A-Frame apps
+- Live link displayed in chat panel with copy and external link buttons
+
+### FINISH Button
+- POST `/api/projects/:id/finalize` marks project complete
+- Sets `isFinalized=true` and `isPublished=true`
+- Published badge shown in UI after finalization
+
+### Simulation Theory Loading Screens
+- Scientific facts about simulation theory during code generation
+- Quotes from Nick Bostrom, Max Tegmark, John Wheeler
+- Quantum mechanics, holographic principle, observer effect explanations
+
 ### Pricing
 - Pro subscription: $19/month
-- Features: Voice control, live preview, all 4 app types, native export
+- Features: Voice control, live preview, all 4 app types, native export, iterative workflow
