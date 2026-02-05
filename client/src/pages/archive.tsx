@@ -191,6 +191,23 @@ export default function ArchivePage() {
             </DialogContent>
           </Dialog>
           
+          {/* Launch Button - Opens live app in new tab */}
+          <a
+            href={`/launch/${app.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid={`button-launch-${app.id}`}
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-violet-500/50 text-violet-400 hover:bg-violet-500/10"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Launch
+            </Button>
+          </a>
+          
           {showPublishToggle && (
             <Button
               variant={app.isPublished ? "secondary" : "default"}
@@ -199,7 +216,6 @@ export default function ArchivePage() {
               disabled={togglePublishMutation.isPending}
               data-testid={`button-publish-${app.id}`}
             >
-              <ExternalLink className="w-4 h-4 mr-2" />
               {app.isPublished ? "Unpublish" : "Publish"}
             </Button>
           )}

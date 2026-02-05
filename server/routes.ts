@@ -649,26 +649,16 @@ Rules:
     }
   });
 
-  // Public view route for live links
-  app.get("/view/:token", async (req, res) => {
-    try {
-      const { token } = req.params;
-      const app = await storage.getAppByViewToken(token);
-
-      if (!app) {
-        return res.status(404).send("App not found");
-      }
-
-      // Build HTML based on app type
-      let htmlContent = "";
-      const language = app.language || "react";
-
-      if (language === "aframe") {
-        htmlContent = `<!DOCTYPE html>
+  // Helper function to build HTML for app rendering
+  function buildAppHtml(app: { name: string; generatedCode: string; language?: string }) {
+    const language = app.language || "react";
+    
+    if (language === "aframe") {
+      return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${app.name}</title>
+  <title>${app.name} | NemesisAI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
   <style>body { margin: 0; }</style>
@@ -677,12 +667,12 @@ Rules:
   ${app.generatedCode}
 </body>
 </html>`;
-      } else if (language === "threejs") {
-        htmlContent = `<!DOCTYPE html>
+    } else if (language === "threejs") {
+      return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${app.name}</title>
+  <title>${app.name} | NemesisAI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://unpkg.com/three@0.157.0/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.157.0/examples/js/controls/OrbitControls.js"></script>
@@ -692,19 +682,19 @@ Rules:
   <script>${app.generatedCode}</script>
 </body>
 </html>`;
-      } else {
-        htmlContent = `<!DOCTYPE html>
+    } else {
+      return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${app.name}</title>
+  <title>${app.name} | NemesisAI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #0a0a0a; color: #fff; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #0a0a0a; color: #fff; min-height: 100vh; }
     * { box-sizing: border-box; }
   </style>
 </head>
@@ -719,10 +709,111 @@ Rules:
   </script>
 </body>
 </html>`;
+    }
+  }
+
+  // Public launch route - main public URL for live apps
+  // Shows published apps publicly, unpublished only for the owner
+  app.get("/launch/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).send("Invalid project ID");
+      }
+      
+      const app = await storage.getApp(id);
+      if (!app) {
+        return res.status(404).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Not Found | NemesisAI</title>
+            <style>
+              body { background: #0a0a0a; color: #fff; font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+              .container { text-align: center; }
+              h1 { color: #d4af37; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>App Not Found</h1>
+              <p>This project doesn't exist or has been removed.</p>
+            </div>
+          </body>
+          </html>
+        `);
+      }
+
+      // Check access: public if published, otherwise require owner or admin
+      if (!app.isPublished && !app.isFinalized) {
+        // Check if user is logged in and is the owner or admin
+        const userId = (req.session as any)?.userId;
+        if (!userId) {
+          return res.status(403).send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Private App | NemesisAI</title>
+              <style>
+                body { background: #0a0a0a; color: #fff; font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .container { text-align: center; }
+                h1 { color: #d4af37; }
+                a { color: #8b5cf6; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <h1>Private App</h1>
+                <p>This app hasn't been published yet.</p>
+                <a href="/login">Login to access</a>
+              </div>
+            </body>
+            </html>
+          `);
+        }
+        
+        const user = await storage.getUser(userId);
+        if (!user?.isAdmin && app.userId !== userId) {
+          return res.status(403).send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Access Denied | NemesisAI</title>
+              <style>
+                body { background: #0a0a0a; color: #fff; font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .container { text-align: center; }
+                h1 { color: #d4af37; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <h1>Access Denied</h1>
+                <p>You don't have permission to view this app.</p>
+              </div>
+            </body>
+            </html>
+          `);
+        }
       }
 
       res.setHeader("Content-Type", "text/html");
-      res.send(htmlContent);
+      res.send(buildAppHtml(app));
+    } catch (err) {
+      console.error("Launch error:", err);
+      res.status(500).send("Error loading app");
+    }
+  });
+
+  // Legacy view route (redirects to /launch/:id)
+  app.get("/view/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const app = await storage.getAppByViewToken(token);
+      if (!app) {
+        return res.status(404).send("App not found");
+      }
+      // Redirect to the new /launch/:id route
+      res.redirect(`/launch/${app.id}`);
     } catch (err) {
       console.error("View error:", err);
       res.status(500).send("Error loading app");

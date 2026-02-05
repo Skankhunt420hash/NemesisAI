@@ -308,8 +308,8 @@ export default function ForgePage() {
   };
 
   const getLiveLink = () => {
-    if (!currentProject?.viewToken) return null;
-    return `${window.location.origin}/view/${currentProject.viewToken}`;
+    if (!currentProject?.id) return null;
+    return `${window.location.origin}/launch/${currentProject.id}`;
   };
 
   const copyLiveLink = () => {
@@ -586,13 +586,13 @@ export default function ForgePage() {
             </div>
 
             {/* Live Link Display */}
-            {currentProject?.viewToken && (
+            {currentProject?.id && (
               <div className="flex items-center gap-2 p-2 rounded-md bg-violet-500/10 border border-violet-500/20">
                 <LinkIcon className="w-4 h-4 text-violet-400 flex-shrink-0" />
                 <span className="text-xs text-violet-300 truncate flex-1">
-                  /view/{currentProject.viewToken.slice(0, 8)}...
+                  /launch/{currentProject.id}
                 </span>
-                <Button variant="ghost" size="sm" onClick={copyLiveLink} className="h-6 px-2">
+                <Button variant="ghost" size="sm" onClick={copyLiveLink} className="h-6 px-2" data-testid="button-copy-link">
                   <Copy className="w-3 h-3" />
                 </Button>
                 <a
@@ -600,6 +600,7 @@ export default function ForgePage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-violet-400 hover:text-violet-300"
+                  data-testid="link-launch"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>

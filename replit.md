@@ -128,10 +128,11 @@ Preferred communication style: Simple, everyday language.
 - "Continue Working" section shows recent projects on Forge homepage
 
 ### Live Link System
-- Each project gets a unique viewToken on creation
-- GET `/view/:token` serves live HTML preview of published apps
+- Primary public URL: GET `/launch/:id` serves live HTML preview using project ID
+- Legacy route: GET `/view/:token` redirects to `/launch/:id`
 - Works for React, Three.js, and A-Frame apps
-- Live link displayed in chat panel with copy and external link buttons
+- Live link displayed in chat panel and archive with copy and external link buttons
+- Archive page has "Launch" button for each project to open in new tab
 
 ### FINISH Button
 - POST `/api/projects/:id/finalize` marks project complete
