@@ -65,7 +65,7 @@ export default function PricingPage() {
               <div className="w-8 h-8 rounded-md gold-gradient flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-black" />
               </div>
-              <span className="text-lg font-semibold">NemesisAI</span>
+              <span className="text-lg font-semibold">NemesisAI - Creator App</span>
             </div>
           </div>
         </div>

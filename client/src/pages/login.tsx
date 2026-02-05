@@ -24,7 +24,7 @@ export default function LoginPage() {
     setIsLoading(false);
 
     if (result.ok) {
-      setLocation("/dashboard");
+      setLocation("/forge");
     } else {
       setError(result.error || "Login failed");
     }
@@ -52,7 +52,7 @@ export default function LoginPage() {
               <div className="w-10 h-10 rounded-lg gold-gradient flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-black" />
               </div>
-              <span className="text-2xl font-bold">NemesisAI</span>
+              <span className="text-2xl font-bold">NemesisAI - Creator App</span>
             </div>
           </div>
 

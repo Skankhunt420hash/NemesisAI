@@ -1,8 +1,10 @@
-# NemesisAI - The Ultimate Creator
+# NemesisAI - Creator App
+
+**Everything is possible if you want it.**
 
 ## Overview
 
-NemesisAI is a high-end AI-powered SaaS platform ($19/month) for iterative app development. Users can describe apps using text or voice commands and receive generated code with live preview. The platform features:
+NemesisAI - Creator App is a high-end AI-powered SaaS platform ($19/month) for iterative app development. Users can describe apps using text or voice commands and receive generated code with live preview. The platform features:
 
 - **Voice Control**: Speech-to-text using OpenAI Whisper API for hands-free development
 - **Split-Screen Interface**: Chat/voice panel on left, live preview on right

@@ -12,7 +12,7 @@ export default function LandingPage() {
               <div className="w-8 h-8 rounded-md gold-gradient flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-black" />
               </div>
-              <span className="text-lg font-semibold tracking-tight">NemesisAI</span>
+              <span className="text-lg font-semibold tracking-tight">NemesisAI - Creator App</span>
             </div>
             <div className="flex items-center gap-3">
               <Link href="/login">
@@ -43,12 +43,16 @@ export default function LandingPage() {
               </div>
               
               <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight mb-6">
-                <span className="text-foreground">Create Apps with</span>
+                <span className="text-foreground">NemesisAI</span>
                 <br />
-                <span className="text-gold">Pure Intelligence</span>
+                <span className="text-gold">Creator App</span>
               </h1>
               
-              <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
+              <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-4">
+                Everything is possible if you want it.
+              </p>
+              
+              <p className="text-base text-muted-foreground/80 max-w-xl mx-auto mb-10">
                 Transform your ideas into fully functional applications. 
                 Simply describe what you want, and let NemesisAI generate the code for you.
               </p>
