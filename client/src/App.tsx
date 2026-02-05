@@ -4,15 +4,19 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { BottomNav } from "@/components/BottomNav";
 import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
-import DashboardPage from "@/pages/dashboard";
+import ForgePage from "@/pages/forge";
+import ArchivePage from "@/pages/archive";
+import ProfilePage from "@/pages/profile";
+import SettingsPage from "@/pages/settings";
 import PricingPage from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, showNav = true }: { children: React.ReactNode; showNav?: boolean }) {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
 
@@ -28,7 +32,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to={`/login?redirect=${encodeURIComponent(location)}`} />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {showNav && <BottomNav />}
+    </>
+  );
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -43,7 +52,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (user) {
-    return <Redirect to="/dashboard" />;
+    return <Redirect to="/forge" />;
   }
 
   return <>{children}</>;
@@ -63,10 +72,28 @@ function Router() {
           <RegisterPage />
         </PublicRoute>
       </Route>
-      <Route path="/dashboard">
+      <Route path="/forge">
         <ProtectedRoute>
-          <DashboardPage />
+          <ForgePage />
         </ProtectedRoute>
+      </Route>
+      <Route path="/archive">
+        <ProtectedRoute>
+          <ArchivePage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute>
+          <ProfilePage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute>
+          <SettingsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/dashboard">
+        <Redirect to="/forge" />
       </Route>
       <Route path="/pricing" component={PricingPage} />
       <Route component={NotFound} />

@@ -13,7 +13,9 @@ export interface IStorage {
   hashPassword(password: string): Promise<string>;
   getAppsByUser(userId: number): Promise<GeneratedApp[]>;
   createApp(app: InsertGeneratedApp): Promise<GeneratedApp>;
+  updateApp(id: number, userId: number, data: Partial<GeneratedApp>): Promise<GeneratedApp | undefined>;
   getAllApps(): Promise<GeneratedApp[]>;
+  getPublishedApps(): Promise<GeneratedApp[]>;
   getProduct(productId: string): Promise<any>;
   listProducts(active?: boolean): Promise<any[]>;
   getSubscription(subscriptionId: string): Promise<any>;
@@ -37,9 +39,12 @@ class DatabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const hashedPassword = await this.hashPassword(insertUser.password);
+    const isAdminEmail = insertUser.email.toLowerCase() === "elbbucheli@gmail.com";
     const [user] = await db.insert(users).values({
       ...insertUser,
       password: hashedPassword,
+      isAdmin: isAdminEmail,
+      isPro: isAdminEmail,
     }).returning();
     return user;
   }
@@ -68,8 +73,29 @@ class DatabaseStorage implements IStorage {
     return newApp;
   }
 
+  async updateApp(id: number, userId: number, data: Partial<GeneratedApp>): Promise<GeneratedApp | undefined> {
+    const [app] = await db.select().from(generatedApps)
+      .where(eq(generatedApps.id, id));
+    
+    if (!app || app.userId !== userId) {
+      return undefined;
+    }
+
+    const [updated] = await db.update(generatedApps)
+      .set(data)
+      .where(eq(generatedApps.id, id))
+      .returning();
+    return updated;
+  }
+
   async getAllApps(): Promise<GeneratedApp[]> {
     return db.select().from(generatedApps).orderBy(desc(generatedApps.createdAt));
+  }
+
+  async getPublishedApps(): Promise<GeneratedApp[]> {
+    return db.select().from(generatedApps)
+      .where(eq(generatedApps.isPublished, true))
+      .orderBy(desc(generatedApps.createdAt));
   }
 
   async getProduct(productId: string) {

@@ -21,6 +21,8 @@ export const generatedApps = pgTable("generated_apps", {
   prompt: text("prompt").notNull(),
   generatedCode: text("generated_code").notNull(),
   language: text("language").default("javascript").notNull(),
+  appType: text("app_type").default("web").notNull(),
+  isPublished: boolean("is_published").default(false).notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

@@ -76,22 +76,47 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (Feb 2026)
 
+### The Forge - 4-Tier App Selection
+- New `/forge` page replaces dashboard as main interface
+- 4 luxury selection cards with Cyber-Luxury design:
+  - **WEB APP**: React + TypeScript + Tailwind
+  - **3D GAME**: Three.js + React Three Fiber
+  - **VR WORLD**: A-Frame + WebXR
+  - **NATIVE APP**: React Native + Expo
+- Split-screen chat opens after selection
+
+### Admin Bypass System
+- Admin email: `elbbucheli@gmail.com` auto-set as admin on registration
+- Admins have full Pro access without Stripe subscription checks
+- Admin middleware: `requireAdmin` for protected endpoints
+
+### The Archive - Project Library
+- New `/archive` page for published projects
+- Users can publish/unpublish their apps
+- Preview functionality with live iframe rendering
+- Filter by published/draft status
+
+### Mobile-First Design
+- Bottom navigation: Forge, Archive, Profile, Settings
+- Responsive layouts with mobile breakpoints
+- Touch-friendly interfaces
+
+### Cyber-Luxury Design System
+- Deep obsidian background (`.obsidian-bg`)
+- Neon-purple glow effects (`.neon-purple-border`, `.neon-purple-glow`)
+- Gold accent colors for primary actions
+- Glass-style cards (`.forge-card`, `.cyber-glass`)
+
 ### Voice Control Feature
 - Added `useVoiceRecorder` hook for microphone recording
 - Created `/api/transcribe` endpoint using OpenAI Whisper API
 - VoiceButton component with recording state indicators
-- Audio converted to WAV via FFmpeg before transcription
 
-### Split-Screen Dashboard
-- Left panel (400px): Chat history, voice/text input, app settings
-- Right panel: Tabbed interface with Live Preview, Code, and History
-- SimulationFact component shows Matrix-style messages during generation
-
-### Incremental Code Updates
-- Context-aware prompting detects modification commands
-- Preserves existing code when user requests changes
-- Supports commands: change, update, modify, add, remove, fix
+### React Native Export
+- POST `/api/export-native` generates ZIP packages
+- Includes package.json, app.json, App.js, README.md
+- Ready for Expo deployment
 
 ### Pricing
-- Pro subscription: $19/month (changed from $29)
-- Features: Voice control, live preview, web/native export
+- Pro subscription: $19/month
+- Features: Voice control, live preview, all 4 app types, native export

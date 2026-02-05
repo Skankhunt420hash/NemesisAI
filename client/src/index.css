@@ -240,4 +240,71 @@
   .text-gold {
     @apply text-primary;
   }
+
+  .cyber-glass {
+    background: linear-gradient(135deg, rgba(15, 15, 20, 0.8) 0%, rgba(10, 10, 15, 0.95) 100%);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(138, 43, 226, 0.3);
+    box-shadow: 
+      0 0 30px rgba(138, 43, 226, 0.15),
+      inset 0 1px 0 rgba(212, 175, 55, 0.1);
+  }
+
+  .cyber-glass:hover {
+    border-color: rgba(138, 43, 226, 0.5);
+    box-shadow: 
+      0 0 50px rgba(138, 43, 226, 0.25),
+      0 0 100px rgba(138, 43, 226, 0.1),
+      inset 0 1px 0 rgba(212, 175, 55, 0.15);
+  }
+
+  .neon-purple-border {
+    border: 2px solid rgba(138, 43, 226, 0.4);
+    box-shadow: 
+      0 0 15px rgba(138, 43, 226, 0.3),
+      inset 0 0 15px rgba(138, 43, 226, 0.1);
+  }
+
+  .neon-purple-glow {
+    box-shadow: 
+      0 0 20px rgba(138, 43, 226, 0.4),
+      0 0 40px rgba(138, 43, 226, 0.2),
+      0 0 60px rgba(138, 43, 226, 0.1);
+  }
+
+  .obsidian-bg {
+    background: linear-gradient(180deg, #0a0a0f 0%, #050508 100%);
+  }
+
+  .forge-card {
+    background: linear-gradient(135deg, rgba(20, 20, 30, 0.9) 0%, rgba(10, 10, 15, 0.95) 100%);
+    border: 2px solid rgba(138, 43, 226, 0.3);
+    border-radius: 1rem;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .forge-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent);
+  }
+
+  .forge-card:hover {
+    border-color: rgba(138, 43, 226, 0.6);
+    box-shadow: 
+      0 10px 40px rgba(138, 43, 226, 0.3),
+      0 0 60px rgba(138, 43, 226, 0.15);
+  }
+
+  .bottom-nav {
+    background: linear-gradient(180deg, rgba(10, 10, 15, 0.95) 0%, rgba(5, 5, 8, 1) 100%);
+    border-top: 1px solid rgba(138, 43, 226, 0.3);
+    backdrop-filter: blur(20px);
+  }
 }

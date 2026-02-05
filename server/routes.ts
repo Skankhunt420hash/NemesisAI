@@ -48,6 +48,9 @@ async function requirePro(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   const user = await storage.getUser(req.session.userId);
+  if (user?.isAdmin) {
+    return next();
+  }
   if (!user?.isPro) {
     return res.status(403).json({ error: "Pro subscription required" });
   }
@@ -287,7 +290,7 @@ Rules:
           },
         ],
         mode: "subscription",
-        success_url: `${req.protocol}://${req.get("host")}/dashboard?success=true`,
+        success_url: `${req.protocol}://${req.get("host")}/forge?success=true`,
         cancel_url: `${req.protocol}://${req.get("host")}/pricing?canceled=true`,
       });
 
@@ -295,6 +298,138 @@ Rules:
     } catch (err) {
       console.error("Checkout error:", err);
       res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  app.patch("/api/apps/:id", requireAuth, async (req, res) => {
+    try {
+      const appId = parseInt(req.params.id as string);
+      
+      if (isNaN(appId)) {
+        return res.status(400).json({ error: "Invalid app ID" });
+      }
+
+      const { isPublished } = req.body;
+      
+      if (typeof isPublished !== "boolean") {
+        return res.status(400).json({ error: "isPublished must be a boolean" });
+      }
+
+      const updated = await storage.updateApp(appId, req.session.userId!, { isPublished });
+      
+      if (!updated) {
+        return res.status(404).json({ error: "App not found or unauthorized" });
+      }
+
+      res.json(updated);
+    } catch (err) {
+      console.error("Update app error:", err);
+      res.status(500).json({ error: "Failed to update app" });
+    }
+  });
+
+  app.post("/api/export-native", requireAuth, requirePro, async (req, res) => {
+    try {
+      const { code, appName } = req.body;
+
+      if (!code) {
+        return res.status(400).json({ error: "Code is required" });
+      }
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename=${(appName || "app").replace(/\s+/g, "-").toLowerCase()}-react-native.zip`);
+
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      archive.pipe(res);
+
+      archive.append(JSON.stringify({
+        name: appName || "MyApp",
+        version: "1.0.0",
+        main: "node_modules/expo/AppEntry.js",
+        scripts: {
+          start: "expo start",
+          android: "expo start --android",
+          ios: "expo start --ios",
+          web: "expo start --web"
+        },
+        dependencies: {
+          "expo": "~49.0.0",
+          "expo-status-bar": "~1.6.0",
+          "react": "18.2.0",
+          "react-native": "0.72.6"
+        },
+        devDependencies: {
+          "@babel/core": "^7.20.0"
+        },
+        private: true
+      }, null, 2), { name: "package.json" });
+
+      archive.append(`import { registerRootComponent } from 'expo';
+import App from './App';
+registerRootComponent(App);
+`, { name: "index.js" });
+
+      archive.append(code, { name: "App.js" });
+
+      archive.append(JSON.stringify({
+        expo: {
+          name: appName || "MyApp",
+          slug: (appName || "myapp").toLowerCase().replace(/\s+/g, "-"),
+          version: "1.0.0",
+          orientation: "portrait",
+          icon: "./assets/icon.png",
+          splash: {
+            image: "./assets/splash.png",
+            resizeMode: "contain",
+            backgroundColor: "#0a0a0f"
+          },
+          ios: {
+            supportsTablet: true
+          },
+          android: {
+            adaptiveIcon: {
+              foregroundImage: "./assets/adaptive-icon.png",
+              backgroundColor: "#0a0a0f"
+            }
+          },
+          web: {
+            favicon: "./assets/favicon.png"
+          }
+        }
+      }, null, 2), { name: "app.json" });
+
+      archive.append(`# ${appName || "MyApp"}
+
+Built with NemesisAI - The Ultimate Creator
+
+## Getting Started
+
+1. Install dependencies:
+   \`\`\`
+   npm install
+   \`\`\`
+
+2. Start the development server:
+   \`\`\`
+   npm start
+   \`\`\`
+
+3. Scan the QR code with Expo Go (Android) or Camera (iOS)
+
+## Building for Production
+
+\`\`\`
+expo build:android
+expo build:ios
+\`\`\`
+`, { name: "README.md" });
+
+      archive.append("", { name: "assets/.gitkeep" });
+
+      await archive.finalize();
+    } catch (err) {
+      console.error("Export native error:", err);
+      res.status(500).json({ error: "Export failed" });
     }
   });
 
