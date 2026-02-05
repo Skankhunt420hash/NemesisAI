@@ -40,11 +40,12 @@ export default function PricingPage() {
 
   const features = [
     "Unlimited app generation",
-    "Access to all AI models",
+    "Voice-controlled development",
+    "Live preview & instant deploy",
+    "Web apps, 3D games & native apps",
+    "Incremental AI updates",
+    "React Native export packages",
     "Priority support",
-    "Export generated code",
-    "Advanced code customization",
-    "Team collaboration (coming soon)",
   ];
 
   return (
@@ -92,7 +93,7 @@ export default function PricingPage() {
           <CardContent className="space-y-6">
             <div className="text-center py-4">
               <div className="flex items-baseline justify-center gap-1">
-                <span className="text-5xl font-bold text-primary">$29</span>
+                <span className="text-5xl font-bold text-primary">$19</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
             </div>

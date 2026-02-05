@@ -4,14 +4,17 @@ import { storage } from "./storage";
 import session from "express-session";
 import MemoryStore from "memorystore";
 import OpenAI from "openai";
+import multer from "multer";
 import { getUncachableStripeClient } from "./stripeClient";
 import { loginSchema, insertUserSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import archiver from "archiver";
 import { db } from "./db";
 import { generatedApps } from "@shared/schema";
+import { transcribeAudio } from "./replit_integrations/audio/transcribe";
 
 const MemoryStoreSession = MemoryStore(session);
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 declare module "express-session" {
   interface SessionData {
@@ -162,6 +165,20 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/transcribe", requireAuth, upload.single("audio"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file provided" });
+      }
+
+      const text = await transcribeAudio(req.file.buffer);
+      res.json({ text });
+    } catch (err: any) {
+      console.error("[transcribe] Error:", err);
+      res.status(500).json({ error: err.message || "Transcription failed" });
+    }
+  });
+
   app.post("/api/generate", requireAuth, requirePro, async (req, res) => {
     try {
       const { prompt, name, language } = req.body;
@@ -261,9 +278,9 @@ Rules:
               currency: "usd",
               product_data: {
                 name: "NemesisAI Pro",
-                description: "Unlimited AI-powered app generation",
+                description: "Unlimited AI-powered app generation with voice control",
               },
-              unit_amount: 2900,
+              unit_amount: 1900,
               recurring: { interval: "month" },
             },
             quantity: 1,

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { VoiceButton } from "@/components/VoiceButton";
+import { SimulationFact } from "@/components/SimulationFact";
 import { 
   Sparkles, 
   LogOut, 
@@ -22,56 +24,88 @@ import {
   Crown, 
   History,
   Loader2,
-  FileCode,
-  AlertCircle
+  Play,
+  ExternalLink,
+  Package,
+  MessageSquare,
+  Send,
+  AlertCircle,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import type { GeneratedApp } from "@shared/schema";
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const [prompt, setPrompt] = useState("");
-  const [appName, setAppName] = useState("");
-  const [language, setLanguage] = useState("javascript");
+  const [appName, setAppName] = useState("My App");
+  const [language, setLanguage] = useState("react");
   const [generatedCode, setGeneratedCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState("");
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: apps = [], isLoading: appsLoading } = useQuery<GeneratedApp[]>({
+  const { data: apps = [] } = useQuery<GeneratedApp[]>({
     queryKey: ["/api/apps"],
   });
 
-  const generateMutation = useMutation({
-    mutationFn: async (data: { prompt: string; name: string; language: string }) => {
-      const res = await apiRequest("POST", "/api/generate", data);
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setGeneratedCode(data.code);
-      queryClient.invalidateQueries({ queryKey: ["/api/apps"] });
-    },
-  });
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+  const handleVoiceTranscript = (text: string) => {
+    setPrompt(text);
+    handleGenerate(text);
+  };
+
+  const handleGenerate = async (inputPrompt?: string) => {
+    const finalPrompt = inputPrompt || prompt;
+    if (!finalPrompt.trim()) return;
     
     if (!user?.isPro) {
-      setGenError("Pro subscription required to generate apps. Please upgrade your account.");
+      setGenError("Pro subscription required. Upgrade to unlock unlimited app generation.");
       return;
     }
 
+    setChatHistory(prev => [...prev, { 
+      role: "user", 
+      content: finalPrompt, 
+      timestamp: new Date() 
+    }]);
+
     setGenError("");
     setIsGenerating(true);
-    setGeneratedCode("");
+
+    const isIncremental = generatedCode && (
+      finalPrompt.toLowerCase().includes("change") ||
+      finalPrompt.toLowerCase().includes("update") ||
+      finalPrompt.toLowerCase().includes("modify") ||
+      finalPrompt.toLowerCase().includes("add") ||
+      finalPrompt.toLowerCase().includes("remove") ||
+      finalPrompt.toLowerCase().includes("fix")
+    );
+
+    const contextPrompt = isIncremental
+      ? `Current code:\n\`\`\`${language}\n${generatedCode}\n\`\`\`\n\nUser request: ${finalPrompt}\n\nPlease make ONLY the requested changes while preserving all other functionality.`
+      : finalPrompt;
 
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt,
+          prompt: contextPrompt,
           name: appName || "Untitled App",
           language,
         }),
@@ -114,9 +148,21 @@ export default function DashboardPage() {
         }
       }
 
+      setChatHistory(prev => [...prev, { 
+        role: "assistant", 
+        content: "Code generated successfully. Check the preview panel.", 
+        timestamp: new Date() 
+      }]);
+
       queryClient.invalidateQueries({ queryKey: ["/api/apps"] });
+      setPrompt("");
     } catch (err: any) {
       setGenError(err.message || "Failed to generate code");
+      setChatHistory(prev => [...prev, { 
+        role: "assistant", 
+        content: `Error: ${err.message}`, 
+        timestamp: new Date() 
+      }]);
     } finally {
       setIsGenerating(false);
     }
@@ -133,33 +179,78 @@ export default function DashboardPage() {
     setLocation("/");
   };
 
-  const handleExport = async () => {
-    try {
-      const res = await fetch("/api/admin/export", { credentials: "include" });
-      if (!res.ok) throw new Error("Export failed");
-      
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "nemesis-export.zip";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Export failed:", err);
+  const handleExportNative = () => {
+    const blob = new Blob([generatedCode], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${appName.replace(/\s+/g, "-").toLowerCase()}-react-native.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const renderPreview = () => {
+    if (!generatedCode) return null;
+    
+    if (language === "react" || language === "javascript" || language === "html") {
+      const htmlContent = language === "html" 
+        ? generatedCode 
+        : `<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #0a0a0a; color: #fff; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    ${generatedCode}
+    
+    if (typeof App !== 'undefined') {
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     }
+  </script>
+</body>
+</html>`;
+      
+      return (
+        <iframe
+          srcDoc={htmlContent}
+          className="w-full h-full border-0 rounded-md bg-black"
+          sandbox="allow-scripts"
+          title="App Preview"
+        />
+      );
+    }
+    
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        <div className="text-center">
+          <Code className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>Live preview available for React, JavaScript, and HTML</p>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <nav className="sticky top-0 z-50 border-b gold-line bg-background/80 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-4">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-md gold-gradient flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-black" />
               </div>
               <span className="text-lg font-semibold tracking-tight">NemesisAI</span>
+              <Badge variant="outline" className="border-violet-500/50 text-violet-400 text-xs">
+                Ultimate Creator
+              </Badge>
             </div>
 
             <div className="flex items-center gap-3">
@@ -178,9 +269,9 @@ export default function DashboardPage() {
               )}
 
               {user?.isAdmin && (
-                <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export">
+                <Button variant="outline" size="sm" data-testid="button-export">
                   <Download className="w-4 h-4 mr-2" />
-                  Export
+                  Export All
                 </Button>
               )}
 
@@ -193,197 +284,234 @@ export default function DashboardPage() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="border gold-line violet-glow-subtle">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wand2 className="w-5 h-5 text-primary" />
-                  Generate App
-                </CardTitle>
-                <CardDescription>
-                  Describe the app you want to create and our AI will generate the code
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="appName">App Name</Label>
-                    <Input
-                      id="appName"
-                      placeholder="My Awesome App"
-                      value={appName}
-                      onChange={(e) => setAppName(e.target.value)}
-                      data-testid="input-app-name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="language">Language</Label>
-                    <Select value={language} onValueChange={setLanguage}>
-                      <SelectTrigger id="language" data-testid="select-language">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="javascript">JavaScript</SelectItem>
-                        <SelectItem value="typescript">TypeScript</SelectItem>
-                        <SelectItem value="python">Python</SelectItem>
-                        <SelectItem value="react">React</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+      <main className="flex-1 flex overflow-hidden">
+        <div className="w-[400px] min-w-[350px] border-r gold-line flex flex-col bg-card/50">
+          <div className="p-4 border-b gold-line space-y-4">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              <h2 className="font-semibold">Voice & Chat Control</h2>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="appName" className="text-xs">App Name</Label>
+                <Input
+                  id="appName"
+                  placeholder="My App"
+                  value={appName}
+                  onChange={(e) => setAppName(e.target.value)}
+                  className="h-9"
+                  data-testid="input-app-name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="language" className="text-xs">Language</Label>
+                <Select value={language} onValueChange={setLanguage}>
+                  <SelectTrigger id="language" className="h-9" data-testid="select-language">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="react">React</SelectItem>
+                    <SelectItem value="javascript">JavaScript</SelectItem>
+                    <SelectItem value="typescript">TypeScript</SelectItem>
+                    <SelectItem value="python">Python</SelectItem>
+                    <SelectItem value="html">HTML/CSS</SelectItem>
+                    <SelectItem value="react-native">React Native</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <ScrollArea className="flex-1 p-4">
+            <div className="space-y-4">
+              {chatHistory.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Wand2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-sm">Describe your app or use voice commands</p>
+                  <p className="text-xs mt-2">Say "Create a todo app" or type your request</p>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="prompt">Describe Your App</Label>
-                  <Textarea
-                    id="prompt"
-                    placeholder="Create a todo list app with the ability to add, remove, and mark tasks as complete..."
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    className="min-h-[120px] resize-none"
-                    data-testid="textarea-prompt"
-                  />
+              )}
+              
+              {chatHistory.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg ${
+                    msg.role === "user"
+                      ? "bg-primary/10 border border-primary/20 ml-4"
+                      : "bg-muted/50 border border-border mr-4"
+                  }`}
+                >
+                  <p className="text-sm">{msg.content}</p>
+                  <span className="text-xs text-muted-foreground mt-1 block">
+                    {msg.timestamp.toLocaleTimeString()}
+                  </span>
                 </div>
+              ))}
+              
+              <SimulationFact isActive={isGenerating} />
+              <div ref={chatEndRef} />
+            </div>
+          </ScrollArea>
 
-                {genError && (
-                  <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2" data-testid="text-error">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    {genError}
-                  </div>
-                )}
+          {genError && (
+            <div className="p-3 mx-4 mb-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span className="truncate">{genError}</span>
+            </div>
+          )}
 
-                <Button 
-                  onClick={handleGenerate} 
+          <div className="p-4 border-t gold-line">
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Describe what you want to build or modify..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="min-h-[80px] resize-none flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleGenerate();
+                  }
+                }}
+                data-testid="textarea-prompt"
+              />
+              <div className="flex flex-col gap-2">
+                <VoiceButton
+                  onTranscript={handleVoiceTranscript}
+                  disabled={isGenerating}
+                />
+                <Button
+                  size="icon"
+                  onClick={() => handleGenerate()}
                   disabled={!prompt.trim() || isGenerating}
-                  className="w-full sm:w-auto"
                   data-testid="button-generate"
                 >
                   {isGenerating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Generate Code
-                    </>
+                    <Send className="h-4 w-4" />
                   )}
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <Card className="border gold-line">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 gap-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Code className="w-5 h-5 text-primary" />
-                    Code Preview
-                  </CardTitle>
-                  <CardDescription>
-                    Generated code will appear here
-                  </CardDescription>
-                </div>
-                {generatedCode && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between p-3 border-b gold-line bg-card/30">
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="font-mono text-xs">
+                {appName || "Untitled"}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {language}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              {generatedCode && (
+                <>
                   <Button variant="outline" size="sm" onClick={handleCopy} data-testid="button-copy">
-                    {copied ? (
-                      <>
-                        <Check className="w-4 h-4 mr-2" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4 mr-2" />
-                        Copy
-                      </>
-                    )}
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   </Button>
+                  {language === "react-native" && (
+                    <Button variant="outline" size="sm" onClick={handleExportNative} data-testid="button-export-native">
+                      <Package className="w-4 h-4 mr-2" />
+                      Export Package
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" data-testid="button-publish">
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Publish
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsFullscreen(!isFullscreen)}
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden">
+            <Tabs defaultValue="preview" className="h-full flex flex-col">
+              <TabsList className="mx-4 mt-2 w-fit">
+                <TabsTrigger value="preview" className="gap-2">
+                  <Play className="w-4 h-4" />
+                  Live Preview
+                </TabsTrigger>
+                <TabsTrigger value="code" className="gap-2">
+                  <Code className="w-4 h-4" />
+                  Code
+                </TabsTrigger>
+                <TabsTrigger value="history" className="gap-2">
+                  <History className="w-4 h-4" />
+                  History
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="preview" className="flex-1 m-4 mt-2 rounded-lg border gold-line overflow-hidden bg-black/50">
+                {generatedCode ? (
+                  renderPreview()
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Sparkles className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                      <h3 className="text-lg font-medium mb-2">Ready to Create</h3>
+                      <p className="text-sm">Use voice or text to describe your app</p>
+                    </div>
+                  </div>
                 )}
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[400px] w-full rounded-md border gold-line bg-black/50 p-4">
+              </TabsContent>
+
+              <TabsContent value="code" className="flex-1 m-4 mt-2 overflow-hidden">
+                <ScrollArea className="h-full rounded-lg border gold-line bg-black/50 p-4">
                   {generatedCode ? (
                     <pre className="text-sm font-mono text-foreground whitespace-pre-wrap">
                       <code data-testid="text-generated-code">{generatedCode}</code>
                     </pre>
                   ) : (
                     <div className="h-full flex items-center justify-center text-muted-foreground">
-                      <div className="text-center">
-                        <FileCode className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>Enter a prompt and click Generate to see code here</p>
-                      </div>
+                      <p>Generated code will appear here</p>
                     </div>
                   )}
                 </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
+              </TabsContent>
 
-          <div className="space-y-6">
-            <Card className="border gold-line">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <History className="w-5 h-5 text-primary" />
-                  Recent Apps
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {appsLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : apps.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    No apps generated yet. Create your first one!
-                  </p>
-                ) : (
-                  <ScrollArea className="h-[400px]">
-                    <div className="space-y-3">
-                      {apps.map((app, index) => (
-                        <div key={app.id}>
-                          {index > 0 && <Separator className="my-3" />}
-                          <button
-                            onClick={() => setGeneratedCode(app.generatedCode)}
-                            className="w-full text-left p-3 rounded-md hover-elevate bg-card border gold-line"
-                            data-testid={`button-app-${app.id}`}
-                          >
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="font-medium truncate">{app.name}</span>
-                              <Badge variant="secondary" className="text-xs flex-shrink-0">
-                                {app.language}
-                              </Badge>
+              <TabsContent value="history" className="flex-1 m-4 mt-2 overflow-hidden">
+                <ScrollArea className="h-full">
+                  {apps.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      <p>No previous apps</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 p-1">
+                      {apps.map((app) => (
+                        <Card
+                          key={app.id}
+                          className="cursor-pointer hover-elevate border gold-line"
+                          onClick={() => setGeneratedCode(app.generatedCode)}
+                          data-testid={`card-app-${app.id}`}
+                        >
+                          <CardHeader className="p-4">
+                            <div className="flex items-center justify-between gap-2">
+                              <CardTitle className="text-sm truncate">{app.name}</CardTitle>
+                              <Badge variant="secondary" className="text-xs">{app.language}</Badge>
                             </div>
-                            <p className="text-xs text-muted-foreground line-clamp-2">
+                            <CardDescription className="text-xs line-clamp-2">
                               {app.prompt}
-                            </p>
-                          </button>
-                        </div>
+                            </CardDescription>
+                          </CardHeader>
+                        </Card>
                       ))}
                     </div>
-                  </ScrollArea>
-                )}
-              </CardContent>
-            </Card>
-
-            {!user?.isPro && (
-              <Card className="border gold-line violet-glow-subtle">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <Crown className="w-10 h-10 mx-auto mb-3 text-primary" />
-                    <h3 className="font-semibold mb-2">Upgrade to Pro</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Unlock unlimited app generation with a Pro subscription.
-                    </p>
-                    <Link href="/pricing">
-                      <Button className="w-full" data-testid="button-upgrade-pro">
-                        View Plans
-                      </Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  )}
+                </ScrollArea>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </main>
