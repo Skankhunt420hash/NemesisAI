@@ -1,8 +1,18 @@
 import { db } from "./db";
-import { users, generatedApps, projectMessages, type User, type InsertUser, type GeneratedApp, type InsertGeneratedApp, type ProjectMessage, type InsertProjectMessage } from "@shared/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { users, generatedApps, projectMessages, passwordResetTokens, type User, type InsertUser, type GeneratedApp, type InsertGeneratedApp, type ProjectMessage, type InsertProjectMessage } from "@shared/schema";
+import { eq, desc, sql, and, lt } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+
+function isAdminEmail(email: string): boolean {
+  const adminEmails = (process.env.SUPERADMIN_EMAILS || "").toLowerCase().split(",").map(e => e.trim()).filter(Boolean);
+  return adminEmails.includes(email.toLowerCase().trim());
+}
+
+function isPremiumEmail(email: string): boolean {
+  const premiumEmails = (process.env.PREMIUM_EMAILS || "").toLowerCase().split(",").map(e => e.trim()).filter(Boolean);
+  return premiumEmails.includes(email.toLowerCase().trim());
+}
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -24,6 +34,11 @@ export interface IStorage {
   getPublishedApps(): Promise<GeneratedApp[]>;
   getProjectMessages(projectId: number): Promise<ProjectMessage[]>;
   addProjectMessage(message: InsertProjectMessage): Promise<ProjectMessage>;
+  createPasswordResetToken(userId: number): Promise<string>;
+  getPasswordResetToken(token: string): Promise<{ userId: number; expiresAt: Date; used: boolean } | undefined>;
+  markResetTokenUsed(token: string): Promise<void>;
+  updateUserPassword(userId: number, newPasswordHash: string): Promise<void>;
+  syncUserRoles(userId: number, email: string): Promise<User | undefined>;
   getProduct(productId: string): Promise<any>;
   listProducts(active?: boolean): Promise<any[]>;
   getSubscription(subscriptionId: string): Promise<any>;
@@ -47,12 +62,15 @@ class DatabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const hashedPassword = await this.hashPassword(insertUser.password);
-    const isAdminEmail = insertUser.email.toLowerCase() === "elbbucheli@gmail.com";
+    const email = insertUser.email.toLowerCase().trim();
+    const admin = isAdminEmail(email);
+    const premium = isPremiumEmail(email);
     const [user] = await db.insert(users).values({
       ...insertUser,
+      email,
       password: hashedPassword,
-      isAdmin: isAdminEmail,
-      isPro: isAdminEmail,
+      isAdmin: admin,
+      isPro: admin || premium,
     }).returning();
     return user;
   }
@@ -168,6 +186,37 @@ class DatabaseStorage implements IStorage {
   async addProjectMessage(message: InsertProjectMessage): Promise<ProjectMessage> {
     const [newMessage] = await db.insert(projectMessages).values(message).returning();
     return newMessage;
+  }
+
+  async createPasswordResetToken(userId: number): Promise<string> {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await db.insert(passwordResetTokens).values({ userId, token, expiresAt });
+    return token;
+  }
+
+  async getPasswordResetToken(token: string) {
+    const [row] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+    if (!row) return undefined;
+    return { userId: row.userId, expiresAt: row.expiresAt, used: row.used };
+  }
+
+  async markResetTokenUsed(token: string): Promise<void> {
+    await db.update(passwordResetTokens).set({ used: true }).where(eq(passwordResetTokens.token, token));
+  }
+
+  async updateUserPassword(userId: number, newPasswordHash: string): Promise<void> {
+    await db.update(users).set({ password: newPasswordHash }).where(eq(users.id, userId));
+  }
+
+  async syncUserRoles(userId: number, email: string): Promise<User | undefined> {
+    const admin = isAdminEmail(email);
+    const premium = isPremiumEmail(email);
+    const [user] = await db.update(users)
+      .set({ isAdmin: admin, isPro: admin || premium })
+      .where(eq(users.id, userId))
+      .returning();
+    return user;
   }
 
   async getProduct(productId: string) {

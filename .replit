@@ -40,3 +40,9 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_openai_ai_integrations:2.0.0", "stripe:2.0.0", "javascript_stripe:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+SUPERADMIN_EMAILS = "elbbucheli@gmail.com,elija.fantasy@gmail.com,buchelielija@gmail.com,elbbucheli5000@gmail.com"
+PREMIUM_EMAILS = "elbbucheli@gmail.com,elija.fantasy@gmail.com,buchelielija@gmail.com,elbbucheli5000@gmail.com,joshua.bucheli97@gmail.com"

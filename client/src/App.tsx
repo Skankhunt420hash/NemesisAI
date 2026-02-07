@@ -22,6 +22,7 @@ import SettingsPage from "@/pages/settings";
 import AdminPage from "@/pages/admin";
 import WorkspacePage from "@/pages/workspace";
 import DiagnosticsPage from "@/pages/diagnostics";
+import ResetPasswordPage from "@/pages/reset-password";
 import PricingPage from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
@@ -190,6 +191,7 @@ function Router() {
           </AppLayout>
         </ProtectedRoute>
       </Route>
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/pricing" component={PricingPage} />
       <Route component={NotFound} />
     </Switch>

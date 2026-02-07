@@ -103,6 +103,7 @@ export async function registerRoutes(
   app.post("/api/auth/register", async (req, res) => {
     try {
       const data = insertUserSchema.parse(req.body);
+      data.email = data.email.toLowerCase().trim();
       
       const existing = await storage.getUserByEmail(data.email);
       if (existing) {
@@ -127,7 +128,7 @@ export async function registerRoutes(
     try {
       const data = loginSchema.parse(req.body);
       
-      const user = await storage.getUserByEmail(data.email);
+      const user = await storage.getUserByEmail(data.email.toLowerCase().trim());
       if (!user) {
         return res.status(401).json({ error: "Invalid email or password" });
       }
@@ -137,10 +138,13 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
+      const synced = await storage.syncUserRoles(user.id, user.email);
+
       req.session.userId = user.id;
       
-      const { password: _, ...safeUser } = user;
-      res.json({ user: safeUser });
+      const safeUser = synced || user;
+      const { password: _, ...userData } = safeUser;
+      res.json({ user: userData });
     } catch (err) {
       if (err instanceof ZodError) {
         return res.status(400).json({ error: err.errors[0]?.message || "Invalid data" });
@@ -161,8 +165,72 @@ export async function registerRoutes(
     if (!user) {
       return res.status(401).json({ error: "User not found" });
     }
-    const { password: _, ...safeUser } = user;
-    res.json({ user: safeUser });
+    const synced = await storage.syncUserRoles(user.id, user.email);
+    const safeUser = synced || user;
+    const { password: _, ...userData } = safeUser;
+    res.json({ user: userData });
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const user = await storage.getUserByEmail(email.toLowerCase().trim());
+      if (!user) {
+        return res.json({ message: "If this email exists, a reset link has been sent." });
+      }
+
+      const token = await storage.createPasswordResetToken(user.id);
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const resetLink = `${baseUrl}/reset-password?token=${token}`;
+
+      console.log(`[Password Reset] Link for ${email}: ${resetLink}`);
+
+      const response: any = { message: "If this email exists, a reset link has been sent." };
+      if (process.env.NODE_ENV !== "production") {
+        response.resetLink = resetLink;
+      }
+      res.json(response);
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      res.status(500).json({ error: "Failed to process request" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ error: "Reset token is required" });
+      }
+      if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+        return res.status(400).json({ error: "New password must be at least 6 characters" });
+      }
+
+      const resetToken = await storage.getPasswordResetToken(token);
+      if (!resetToken) {
+        return res.status(400).json({ error: "Invalid or expired reset link. Please request a new one." });
+      }
+      if (resetToken.used) {
+        return res.status(400).json({ error: "This reset link has already been used. Please request a new one." });
+      }
+      if (new Date() > resetToken.expiresAt) {
+        return res.status(400).json({ error: "This reset link has expired. Please request a new one." });
+      }
+
+      const hashedPassword = await storage.hashPassword(newPassword);
+      await storage.updateUserPassword(resetToken.userId, hashedPassword);
+      await storage.markResetTokenUsed(token);
+
+      res.json({ message: "Password has been reset successfully. You can now log in." });
+    } catch (err) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ error: "Failed to reset password" });
+    }
   });
 
   app.get("/api/apps", requireAuth, async (req, res) => {
