@@ -10,7 +10,7 @@ NemesisAI - Creator App is a high-end AI-powered SaaS platform ($19/month) for i
 - **Split-Screen Interface**: Chat/voice panel on left, live preview on right
 - **Incremental Updates**: AI modifies code step-by-step based on user commands
 - **Multi-Platform Export**: Web apps with instant preview, React Native ZIP packages
-- **"Eternal Night" Design**: Pure black background, gold accents, violet glow effects
+- **"100M$ UI" Design**: Deep Space Black (#070A0F), glassmorphism, neon cyan/violet/gold accents, Sora + Inter fonts
 
 The application follows a full-stack TypeScript architecture with a React frontend and Express backend, using PostgreSQL for data persistence.
 
@@ -98,16 +98,21 @@ Preferred communication style: Simple, everyday language.
 - Preview functionality with live iframe rendering
 - Filter by published/draft status
 
-### Mobile-First Design
-- Bottom navigation: Forge, Archive, Profile, Settings
-- Responsive layouts with mobile breakpoints
-- Touch-friendly interfaces
+### Navigation & Layout (100M$ UI Redesign - Feb 2026)
+- **Sidebar** (shadcn SidebarProvider): Dashboard, Create, Tools, Templates, History, Billing, Settings, Admin
+- **Topbar**: NemesisAI logo, search bar, language toggle (DE/EN), command palette (Cmd+K), user menu dropdown
+- **AppLayout** component wraps all protected routes with Sidebar + Topbar
+- Responsive: sidebar collapses on mobile, topbar adapts
+- **Framer Motion** for page transition animations
+- **Sora font** for headings, Inter for body text
 
-### Cyber-Luxury Design System
-- Deep obsidian background (`.obsidian-bg`)
-- Neon-purple glow effects (`.neon-purple-border`, `.neon-purple-glow`)
-- Gold accent colors for primary actions
-- Glass-style cards (`.forge-card`, `.cyber-glass`)
+### Design System (100M$ UI)
+- Deep Space Black (#070A0F) base with glassmorphism
+- Glass utilities: `.glass`, `.glass-card` with backdrop-blur
+- Neon glow effects: `.glow-cyan`, `.glow-violet`, `.glow-gold`
+- Gradient borders: `.gradient-border-cyan`, `.gradient-border-violet`
+- Gold accent for primary actions, cyan/violet for highlights
+- Forge cards: `.forge-card` with glass styling
 
 ### Voice Control Feature
 - Added `useVoiceRecorder` hook for microphone recording
