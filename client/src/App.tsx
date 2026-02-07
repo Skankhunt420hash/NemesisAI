@@ -20,6 +20,8 @@ import BillingPage from "@/pages/billing";
 import ProfilePage from "@/pages/profile";
 import SettingsPage from "@/pages/settings";
 import AdminPage from "@/pages/admin";
+import WorkspacePage from "@/pages/workspace";
+import DiagnosticsPage from "@/pages/diagnostics";
 import PricingPage from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
@@ -61,7 +63,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AppLayout({ children }: { children: React.ReactNode }) {
+function AppLayout({ children, noOverflow = false }: { children: React.ReactNode; noOverflow?: boolean }) {
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3.5rem",
@@ -73,7 +75,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
           <Topbar />
-          <main className="flex-1 overflow-auto">
+          <main className={`flex-1 ${noOverflow ? "overflow-hidden" : "overflow-auto"}`}>
             {children}
           </main>
         </div>
@@ -171,6 +173,20 @@ function Router() {
         <ProtectedRoute>
           <AppLayout>
             <AdminPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/workspace/:id">
+        <ProtectedRoute>
+          <AppLayout noOverflow>
+            <WorkspacePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/diagnostics">
+        <ProtectedRoute>
+          <AppLayout>
+            <DiagnosticsPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>

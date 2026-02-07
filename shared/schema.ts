@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, integer, timestamp, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, integer, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -25,6 +25,9 @@ export const generatedApps = pgTable("generated_apps", {
   isPublished: boolean("is_published").default(false).notNull(),
   isFinalized: boolean("is_finalized").default(false).notNull(),
   viewToken: text("view_token"),
+  filesJson: text("files_json"),
+  entryFile: text("entry_file"),
+  framework: text("framework"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -34,6 +37,8 @@ export const projectMessages = pgTable("project_messages", {
   projectId: integer("project_id").notNull().references(() => generatedApps.id, { onDelete: "cascade" }),
   role: text("role").notNull(),
   content: text("content").notNull(),
+  messageType: text("message_type").default("chat"),
+  metadata: text("metadata"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -86,3 +91,21 @@ export type ProjectMessage = typeof projectMessages.$inferSelect;
 export type InsertProjectMessage = z.infer<typeof insertProjectMessageSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+
+export type ProjectFiles = Record<string, string>;
+
+export interface AgentStep {
+  id: string;
+  type: "plan" | "edit" | "create" | "delete" | "command" | "preview";
+  description: string;
+  status: "pending" | "running" | "done" | "error";
+  file?: string;
+  diff?: string;
+}
+
+export interface AgentResponse {
+  steps: AgentStep[];
+  files: ProjectFiles;
+  entryFile: string;
+  summary: string;
+}

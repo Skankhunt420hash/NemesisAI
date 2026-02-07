@@ -128,7 +128,8 @@ export default function DashboardPage() {
             {recentApps.map((app) => {
               const Icon = appTypeIcons[app.appType || "web"] || Globe;
               return (
-                <Card key={app.id} className="glass-card glass-card-hover" data-testid={`card-project-${app.id}`}>
+                <Link href={`/workspace/${app.id}`}>
+                <Card key={app.id} className="glass-card hover-elevate cursor-pointer" data-testid={`card-project-${app.id}`}>
                   <CardContent className="p-4 flex items-start gap-3">
                     <div className="w-9 h-9 rounded-md flex items-center justify-center bg-muted/50 border border-border/50 flex-shrink-0">
                       <Icon className="w-4 h-4 text-muted-foreground" />
@@ -149,6 +150,7 @@ export default function DashboardPage() {
                     </div>
                   </CardContent>
                 </Card>
+                </Link>
               );
             })}
           </div>

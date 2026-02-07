@@ -18,6 +18,7 @@ export interface IStorage {
   createApp(app: InsertGeneratedApp): Promise<GeneratedApp>;
   updateApp(id: number, userId: number, data: Partial<GeneratedApp>): Promise<GeneratedApp | undefined>;
   updateAppCode(id: number, userId: number, code: string): Promise<GeneratedApp | undefined>;
+  updateAppFiles(id: number, userId: number, files: Record<string, string>, entryFile: string): Promise<GeneratedApp | undefined>;
   finalizeApp(id: number, userId: number, isPublished?: boolean): Promise<GeneratedApp | undefined>;
   getAllApps(): Promise<GeneratedApp[]>;
   getPublishedApps(): Promise<GeneratedApp[]>;
@@ -115,6 +116,23 @@ class DatabaseStorage implements IStorage {
 
     const [updated] = await db.update(generatedApps)
       .set({ generatedCode: code, updatedAt: new Date() })
+      .where(eq(generatedApps.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateAppFiles(id: number, userId: number, files: Record<string, string>, entryFile: string): Promise<GeneratedApp | undefined> {
+    const [app] = await db.select().from(generatedApps).where(eq(generatedApps.id, id));
+    if (!app || app.userId !== userId) return undefined;
+
+    const mainCode = files[entryFile] || Object.values(files)[0] || "";
+    const [updated] = await db.update(generatedApps)
+      .set({
+        filesJson: JSON.stringify(files),
+        entryFile,
+        generatedCode: mainCode,
+        updatedAt: new Date(),
+      })
       .where(eq(generatedApps.id, id))
       .returning();
     return updated;

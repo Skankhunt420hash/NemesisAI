@@ -61,7 +61,7 @@ import {
   Eye
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import type { GeneratedApp, ProjectMessage } from "@shared/schema";
 
 type AppType = "web" | "3d-game" | "vr-world" | "native";
@@ -128,6 +128,7 @@ interface ProjectWithMessages extends GeneratedApp {
 export default function ForgePage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [selectedType, setSelectedType] = useState<AppType | null>(null);
   const [prompt, setPrompt] = useState("");
   const [appName, setAppName] = useState("My App");
@@ -524,17 +525,37 @@ export default function ForgePage() {
     }
   };
 
-  const handleSelectType = (type: AppType) => {
-    setSelectedType(type);
-    setCurrentProject(null);
-    setGeneratedCode("");
-    setChatHistory([]);
-    setGenError("");
+  const handleSelectType = async (type: AppType) => {
+    if (!canAccess) {
+      toast({ title: "Pro Required", description: "Upgrade to Pro to create projects.", variant: "destructive" });
+      return;
+    }
+    try {
+      const typeConfig = appTypes.find(t => t.id === type);
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `New ${typeConfig?.title || "App"}`,
+          appType: type,
+          language: typeConfig?.language || "react",
+        }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create project");
+      const project = await res.json();
+      setLocation(`/workspace/${project.id}`);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleOpenWorkspace = (app: GeneratedApp) => {
+    setLocation(`/workspace/${app.id}`);
   };
 
   const handleLoadFromHistory = async (app: GeneratedApp) => {
-    setSelectedType(app.appType as AppType || "web");
-    await loadProject(app.id);
+    setLocation(`/workspace/${app.id}`);
   };
 
   const renderPreview = () => {

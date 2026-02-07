@@ -24,6 +24,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Activity,
 } from "lucide-react";
 
 const mainNavItems = [
@@ -117,18 +118,32 @@ export function AppSidebar() {
                 );
               })}
               {user?.isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location === "/admin"}
-                    data-testid="nav-admin"
-                  >
-                    <Link href="/admin">
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>Admin</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === "/admin"}
+                      data-testid="nav-admin"
+                    >
+                      <Link href="/admin">
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Admin</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === "/diagnostics"}
+                      data-testid="nav-diagnostics"
+                    >
+                      <Link href="/diagnostics">
+                        <Activity className="w-4 h-4" />
+                        <span>Diagnostics</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </>
               )}
             </SidebarMenu>
           </SidebarGroupContent>

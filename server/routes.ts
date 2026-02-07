@@ -7,11 +7,14 @@ import OpenAI from "openai";
 import multer from "multer";
 import { getUncachableStripeClient } from "./stripeClient";
 import { loginSchema, insertUserSchema } from "@shared/schema";
+import type { ProjectFiles, AgentStep, AgentResponse } from "@shared/schema";
 import { ZodError } from "zod";
 import archiver from "archiver";
 import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { generatedApps } from "@shared/schema";
 import { transcribeAudio } from "./replit_integrations/audio/transcribe";
+import { createPatch } from "diff";
 
 const MemoryStoreSession = MemoryStore(session);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -36,34 +39,38 @@ function getOpenAIClient() {
   });
 }
 
+function apiError(res: Response, status: number, code: string, message: string, action?: string) {
+  return res.status(status).json({ error: message, code, action });
+}
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
-    return res.status(401).json({ error: "Unauthorized" });
+    return apiError(res, 401, "AUTH_REQUIRED", "Please log in to continue.", "redirect:/login");
   }
   next();
 }
 
 async function requirePro(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
-    return res.status(401).json({ error: "Unauthorized" });
+    return apiError(res, 401, "AUTH_REQUIRED", "Please log in to continue.", "redirect:/login");
   }
   const user = await storage.getUser(req.session.userId);
   if (user?.isAdmin) {
     return next();
   }
   if (!user?.isPro) {
-    return res.status(403).json({ error: "Pro subscription required" });
+    return apiError(res, 403, "PRO_REQUIRED", "Pro subscription required. Upgrade to unlock this feature.", "redirect:/billing");
   }
   next();
 }
 
 async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
-    return res.status(401).json({ error: "Unauthorized" });
+    return apiError(res, 401, "AUTH_REQUIRED", "Please log in to continue.", "redirect:/login");
   }
   const user = await storage.getUser(req.session.userId);
   if (!user?.isAdmin) {
-    return res.status(403).json({ error: "Admin access required" });
+    return apiError(res, 403, "ADMIN_REQUIRED", "Admin access required for this action.");
   }
   next();
 }
@@ -1060,6 +1067,346 @@ Rules:
       console.error("Preview logs error:", err);
       res.status(500).json({ error: "Failed to get logs" });
     }
+  });
+
+  // === WORKSPACE FILE APIs ===
+
+  app.get("/api/projects/:id/files", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) return res.status(400).json({ error: "Invalid project ID" });
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      let files: ProjectFiles = {};
+      let entryFile = project.entryFile || "index.html";
+
+      if (project.filesJson) {
+        try { files = JSON.parse(project.filesJson); } catch { files = {}; }
+      }
+
+      if (Object.keys(files).length === 0 && project.generatedCode) {
+        files[entryFile] = project.generatedCode;
+      }
+
+      res.json({ files, entryFile });
+    } catch (err) {
+      console.error("Get files error:", err);
+      res.status(500).json({ error: "Failed to get files" });
+    }
+  });
+
+  app.put("/api/projects/:id/files", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) return res.status(400).json({ error: "Invalid project ID" });
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId!) {
+        return apiError(res, 404, "NOT_FOUND", "Project not found");
+      }
+
+      const { files, entryFile } = req.body;
+      if (!files || typeof files !== "object") {
+        return res.status(400).json({ error: "Files object is required" });
+      }
+
+      let mergedFiles: ProjectFiles = { ...files };
+      if (!project.filesJson && project.generatedCode && Object.keys(mergedFiles).length > 0) {
+        const legacyEntry = project.entryFile || "index.html";
+        if (!mergedFiles[legacyEntry]) {
+          mergedFiles[legacyEntry] = project.generatedCode;
+        }
+      }
+
+      const updated = await storage.updateAppFiles(
+        projectId, req.session.userId!, mergedFiles, entryFile || project.entryFile || "index.html"
+      );
+      if (!updated) return apiError(res, 404, "NOT_FOUND", "Project not found");
+
+      res.json({ success: true, entryFile: updated.entryFile });
+    } catch (err) {
+      console.error("Update files error:", err);
+      res.status(500).json({ error: "Failed to update files" });
+    }
+  });
+
+  app.patch("/api/projects/:id/file", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) return res.status(400).json({ error: "Invalid project ID" });
+
+      const filepath = req.body.filepath as string;
+      if (!filepath) return res.status(400).json({ error: "Filepath is required" });
+      const { content } = req.body;
+      if (typeof content !== "string") {
+        return res.status(400).json({ error: "Content string is required" });
+      }
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      let files: ProjectFiles = {};
+      if (project.filesJson) {
+        try { files = JSON.parse(project.filesJson); } catch { files = {}; }
+      }
+      files[filepath] = content;
+
+      const entryFile = project.entryFile || "index.html";
+      await storage.updateAppFiles(projectId, req.session.userId!, files, entryFile);
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Patch file error:", err);
+      res.status(500).json({ error: "Failed to update file" });
+    }
+  });
+
+  // === AGENT ITERATE (Structured with plan steps + diffs) ===
+
+  app.post("/api/projects/:id/agent", requireAuth, requirePro, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) return res.status(400).json({ error: "Invalid project ID" });
+
+      const { prompt } = req.body;
+      if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      await storage.addProjectMessage({
+        projectId,
+        role: "user",
+        content: prompt,
+        messageType: "chat",
+      });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      let openai: OpenAI;
+      try {
+        openai = getOpenAIClient();
+      } catch (err: any) {
+        res.write(`data: ${JSON.stringify({ type: "error", error: err.message })}\n\n`);
+        res.end();
+        return;
+      }
+
+      let currentFiles: ProjectFiles = {};
+      const entryFile = project.entryFile || "index.html";
+      if (project.filesJson) {
+        try { currentFiles = JSON.parse(project.filesJson); } catch { currentFiles = {}; }
+      }
+      if (Object.keys(currentFiles).length === 0 && project.generatedCode) {
+        currentFiles[entryFile] = project.generatedCode;
+      }
+
+      let techContext = "";
+      switch (project.appType) {
+        case "3d-game":
+          techContext = "Use Three.js with React Three Fiber for 3D rendering. Include OrbitControls and proper lighting.";
+          break;
+        case "vr-world":
+          techContext = "Use A-Frame for WebVR. Create an immersive VR scene with interactive elements.";
+          break;
+        case "native":
+          techContext = "Use React Native with Expo. Ensure cross-platform compatibility for iOS and Android.";
+          break;
+        default:
+          techContext = "Use React with modern hooks and Tailwind CSS for styling.";
+      }
+
+      const fileList = Object.keys(currentFiles).length > 0
+        ? `Current files:\n${Object.entries(currentFiles).map(([path, code]) => `--- ${path} ---\n${code}`).join("\n\n")}`
+        : "No files yet. Create the project from scratch.";
+
+      const systemPrompt = `You are NemesisAI Agent, an expert software developer. You work like Cursor/Replit - you receive instructions and produce complete file contents.
+
+Tech Stack: ${project.language}
+${techContext}
+
+${fileList}
+
+CRITICAL RULES:
+1. Output your response as a JSON object with this exact structure:
+{
+  "plan": ["Step 1 description", "Step 2 description", ...],
+  "files": {
+    "filename.ext": "full file content here",
+    ...
+  },
+  "entryFile": "index.html",
+  "summary": "Brief summary of what was done"
+}
+2. Include ALL files - even unchanged ones. Output complete file contents, never partial.
+3. Use proper file extensions (.html, .css, .js, .tsx, .json etc.)
+4. For web apps, the entry file should be index.html
+5. Keep code clean, modern, and production-ready
+6. Output ONLY the JSON object, no markdown fences, no explanations outside the JSON`;
+
+      res.write(`data: ${JSON.stringify({ type: "step", step: { id: "1", type: "plan", description: "Analyzing your request...", status: "running" } })}\n\n`);
+
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4.1",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        stream: true,
+        max_completion_tokens: 16384,
+      });
+
+      let fullResponse = "";
+
+      res.write(`data: ${JSON.stringify({ type: "step", step: { id: "1", type: "plan", description: "Analyzing your request...", status: "done" } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "step", step: { id: "2", type: "edit", description: "Generating code...", status: "running" } })}\n\n`);
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          fullResponse += content;
+          res.write(`data: ${JSON.stringify({ type: "stream", content })}\n\n`);
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ type: "step", step: { id: "2", type: "edit", description: "Generating code...", status: "done" } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "step", step: { id: "3", type: "command", description: "Applying changes...", status: "running" } })}\n\n`);
+
+      let agentResult: AgentResponse;
+      try {
+        const cleaned = fullResponse.replace(/^```json?\s*/, "").replace(/\s*```$/, "").trim();
+        const parsed = JSON.parse(cleaned);
+        agentResult = {
+          steps: (parsed.plan || []).map((desc: string, i: number) => ({
+            id: String(i + 1),
+            type: "plan" as const,
+            description: desc,
+            status: "done" as const,
+          })),
+          files: parsed.files || {},
+          entryFile: parsed.entryFile || "index.html",
+          summary: parsed.summary || "Changes applied",
+        };
+      } catch {
+        const singleFile = entryFile;
+        agentResult = {
+          steps: [{ id: "1", type: "edit", description: "Generated code", status: "done" }],
+          files: { [singleFile]: fullResponse },
+          entryFile: singleFile,
+          summary: "Code generated (single file fallback)",
+        };
+      }
+
+      const diffs: Record<string, string> = {};
+      for (const [filepath, newContent] of Object.entries(agentResult.files)) {
+        const oldContent = currentFiles[filepath] || "";
+        if (oldContent !== newContent) {
+          diffs[filepath] = createPatch(filepath, oldContent, newContent, "before", "after");
+        }
+      }
+
+      await storage.updateAppFiles(
+        projectId, req.session.userId!,
+        agentResult.files, agentResult.entryFile
+      );
+
+      await storage.updateApp(projectId, req.session.userId!, { prompt });
+
+      await storage.addProjectMessage({
+        projectId,
+        role: "assistant",
+        content: agentResult.summary,
+        messageType: "agent",
+        metadata: JSON.stringify({
+          steps: agentResult.steps,
+          diffs: Object.keys(diffs),
+          fileCount: Object.keys(agentResult.files).length,
+        }),
+      });
+
+      res.write(`data: ${JSON.stringify({ type: "step", step: { id: "3", type: "command", description: "Applying changes...", status: "done" } })}\n\n`);
+
+      res.write(`data: ${JSON.stringify({
+        type: "result",
+        result: {
+          plan: agentResult.steps.map(s => s.description),
+          files: agentResult.files,
+          entryFile: agentResult.entryFile,
+          diffs,
+          summary: agentResult.summary,
+        }
+      })}\n\n`);
+
+      res.write(`data: ${JSON.stringify({ type: "done", projectId })}\n\n`);
+      res.end();
+    } catch (err: any) {
+      console.error("Agent error:", err);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ type: "error", error: err.message || "Agent failed" })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: "Agent execution failed" });
+      }
+    }
+  });
+
+  // === DIAGNOSTICS (Admin only) ===
+
+  app.get("/api/diagnostics", requireAuth, requireAdmin, async (req, res) => {
+    const checks: Record<string, { status: "ok" | "warning" | "error"; message: string }> = {};
+
+    checks.database = await (async () => {
+      try {
+        await db.execute(sql`SELECT 1`);
+        return { status: "ok" as const, message: "PostgreSQL connected" };
+      } catch (err: any) {
+        return { status: "error" as const, message: `DB error: ${err.message}` };
+      }
+    })();
+
+    checks.openai = (() => {
+      const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (key) return { status: "ok" as const, message: "API key configured" };
+      return { status: "error" as const, message: "No OpenAI API key found" };
+    })();
+
+    checks.session = (() => {
+      const secret = process.env.SESSION_SECRET;
+      if (secret) return { status: "ok" as const, message: "Session secret configured" };
+      return { status: "warning" as const, message: "Using default session secret (not secure)" };
+    })();
+
+    checks.stripe = await (async () => {
+      try {
+        const client = await getUncachableStripeClient();
+        if (client) return { status: "ok" as const, message: "Stripe client available" };
+        return { status: "warning" as const, message: "Stripe client not initialized" };
+      } catch (err: any) {
+        return { status: "warning" as const, message: `Stripe: ${err.message}` };
+      }
+    })();
+
+    checks.env = (() => {
+      const required = ["DATABASE_URL"];
+      const missing = required.filter(k => !process.env[k]);
+      if (missing.length === 0) return { status: "ok" as const, message: "All required ENV vars present" };
+      return { status: "error" as const, message: `Missing: ${missing.join(", ")}` };
+    })();
+
+    const overall = Object.values(checks).some(c => c.status === "error") ? "error"
+      : Object.values(checks).some(c => c.status === "warning") ? "warning" : "ok";
+
+    res.json({ overall, checks, timestamp: new Date().toISOString() });
   });
 
   app.get("/api/admin/export", requireAuth, requireAdmin, async (req, res) => {

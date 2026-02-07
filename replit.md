@@ -99,7 +99,7 @@ Preferred communication style: Simple, everyday language.
 - Filter by published/draft status
 
 ### Navigation & Layout (100M$ UI Redesign - Feb 2026)
-- **Sidebar** (shadcn SidebarProvider): Dashboard, Create, Tools, Templates, History, Billing, Settings, Admin
+- **Sidebar** (shadcn SidebarProvider): Dashboard, Create, Tools, Templates, History, Billing, Settings, Admin, Diagnostics
 - **Topbar**: NemesisAI logo, search bar, language toggle (DE/EN), command palette (Cmd+K), user menu dropdown
 - **AppLayout** component wraps all protected routes with Sidebar + Topbar
 - Responsive: sidebar collapses on mobile, topbar adapts
@@ -113,6 +113,32 @@ Preferred communication style: Simple, everyday language.
 - Gradient borders: `.gradient-border-cyan`, `.gradient-border-violet`
 - Gold accent for primary actions, cyan/violet for highlights
 - Forge cards: `.forge-card` with glass styling
+
+### Workspace IDE (Cursor-like Experience - Feb 2026)
+- `/workspace/:id` - Full IDE workspace for each project
+- **File Explorer**: Virtual file system (JSON), create/delete files
+- **Monaco Editor**: Syntax highlighting, Ctrl+S save, auto-language detection
+- **Agent Chat**: Free-text input → AI plans steps → shows diffs → applies changes
+- **Terminal Panel**: Agent action logs with step indicators (plan → edit → apply)
+- **Live Preview**: iframe-based HTML preview with auto-refresh
+- **Resizable Panels**: react-resizable-panels for IDE layout
+- Multi-file projects stored as `filesJson` column in `generated_apps`
+- Backward compatible: old single-file projects auto-migrate on load
+- Agent endpoint: POST `/api/projects/:id/agent` with structured response (plan, files, diffs)
+- File CRUD: GET/PUT `/api/projects/:id/files`, PATCH `/api/projects/:id/file`
+
+### Diagnostics Page (Admin-only)
+- `/diagnostics` - Real-time system health checks
+- Checks: Database, OpenAI API, Session Security, Stripe, ENV vars
+- Status: OK (green), Warning (amber), Error (red)
+- Auto-refresh every 30 seconds
+- Admin-only access via `requireAdmin` middleware
+
+### Standardized Error Handling
+- Backend returns structured errors: `{ error, code, action }`
+- Error codes: AUTH_REQUIRED, PRO_REQUIRED, ADMIN_REQUIRED
+- Action hints: redirect paths for client-side handling
+- Frontend `queryClient` parses structured errors for better UX
 
 ### Voice Control Feature
 - Added `useVoiceRecorder` hook for microphone recording
