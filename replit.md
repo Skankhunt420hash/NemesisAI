@@ -28,9 +28,12 @@ Preferred communication style: Simple, everyday language.
 - **AI Integration**: OpenAI API for code generation, integrated via Replit AI.
 - **Core Workflow**: Iterative App Factory for persistent project sessions, incremental code updates via Server-Sent Events (SSE), and AI-driven code modification based on user prompts.
 - **Admin System**: Admin bypass for Pro features, `requireAdmin` middleware.
-- **Error Handling**: Standardized structured errors `{ error, code, action }`.
+- **Error Handling**: Standardized structured errors `{ error, code, action }` with specific codes: `INVALID_CREDENTIALS`, `DB_DOWN`, `DB_NOT_CONFIGURED`, `VALIDATION_ERROR`, `EMAIL_EXISTS`, `SERVER_ERROR`.
 - **Role-Based Access**: Email whitelisting for SUPERADMIN_EMAILS and PREMIUM_EMAILS environment variables.
 - **Password Reset**: Secure flow with token-based reset.
+- **Health Endpoints**: `GET /api/health` (basic ok + version), `GET /api/ready` (DB + ENV checks, returns 503 if not ready).
+- **Safe Mode**: Frontend polls `/api/ready` every 30s. If not ready, login/register are disabled with an amber "Safe Mode" banner showing the specific error reason.
+- **APP_VERSION**: Exposed via health/ready endpoints, displayed in UI footer. Set via Docker build arg from git SHA in deploy.sh.
 - **Preview System**: Backend endpoints for managing preview server status, starting/stopping, auto-fixing, and retrieving logs.
 
 ### Data Storage
@@ -65,3 +68,6 @@ Preferred communication style: Simple, everyday language.
     - Utilized for various functionalities including AI model access, image generation, batch processing, and chat helpers.
 - **Deployment**:
     - **DigitalOcean**: Deployment files (`Dockerfile`, `docker-compose.yml`, `nginx.conf`, `deploy.sh`) are prepared for DigitalOcean infrastructure.
+    - **deploy.sh flow**: `git pull` → `docker compose build` (with APP_VERSION) → `drizzle-kit push` → `docker compose up -d` → readiness check loop.
+    - **Cache Busting**: Vite production builds use content-hashed filenames by default (`[name]-[hash].js`).
+    - **Docker Healthcheck**: Dockerfile includes `HEALTHCHECK` pointing to `/api/health`.

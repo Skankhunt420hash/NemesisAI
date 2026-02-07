@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { ReadyProvider, useReady } from "@/lib/ready";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Topbar } from "@/components/topbar";
@@ -64,6 +65,16 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function VersionFooter() {
+  const { version } = useReady();
+  return (
+    <footer className="border-t border-border/40 px-4 py-1.5 flex items-center justify-between flex-wrap gap-1 text-xs text-muted-foreground" data-testid="footer-version">
+      <span>NemesisAI</span>
+      <span data-testid="text-app-version">v{version}</span>
+    </footer>
+  );
+}
+
 function AppLayout({ children, noOverflow = false }: { children: React.ReactNode; noOverflow?: boolean }) {
   const style = {
     "--sidebar-width": "16rem",
@@ -79,6 +90,7 @@ function AppLayout({ children, noOverflow = false }: { children: React.ReactNode
           <main className={`flex-1 ${noOverflow ? "overflow-hidden" : "overflow-auto"}`}>
             {children}
           </main>
+          <VersionFooter />
         </div>
       </div>
     </SidebarProvider>
@@ -202,10 +214,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AuthProvider>
-          <Toaster />
-          <Router />
-        </AuthProvider>
+        <ReadyProvider>
+          <AuthProvider>
+            <Toaster />
+            <Router />
+          </AuthProvider>
+        </ReadyProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

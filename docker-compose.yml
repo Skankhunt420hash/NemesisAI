@@ -2,7 +2,10 @@ version: "3.8"
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     container_name: nemesisai-app
     restart: always
     ports:

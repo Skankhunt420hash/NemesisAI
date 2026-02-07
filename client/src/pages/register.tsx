@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { useReady } from "@/lib/ready";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, ArrowLeft, Loader2 } from "lucide-react";
+import { Sparkles, ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -14,7 +15,9 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
+  const { isReady, errors: readyErrors } = useReady();
   const [, setLocation] = useLocation();
+  const safeMode = !isReady;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +69,21 @@ export default function RegisterPage() {
               <span className="text-2xl font-bold">NemesisAI - Creator App</span>
             </div>
           </div>
+
+          {safeMode && (
+            <Card className="border border-amber-500/30 bg-amber-500/5 mb-4" data-testid="banner-safe-mode">
+              <CardContent className="p-4 flex items-start gap-3">
+                <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-amber-400 text-sm">Safe Mode</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Server not ready: {readyErrors.join(", ") || "Unknown issue"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Login and registration are temporarily disabled.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="border gold-line violet-glow-subtle">
             <CardHeader className="space-y-1">
@@ -124,7 +142,7 @@ export default function RegisterPage() {
                 <Button 
                   type="submit" 
                   className="w-full" 
-                  disabled={isLoading}
+                  disabled={isLoading || safeMode}
                   data-testid="button-register"
                 >
                   {isLoading ? (

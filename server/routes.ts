@@ -102,12 +102,22 @@ export async function registerRoutes(
 
   app.post("/api/auth/register", async (req, res) => {
     try {
+      if (!process.env.DATABASE_URL) {
+        return res.status(503).json({ error: "Server configuration error: database not configured", code: "DB_NOT_CONFIGURED" });
+      }
+
+      try {
+        await db.execute(sql`SELECT 1`);
+      } catch {
+        return res.status(503).json({ error: "Database is temporarily unavailable. Please try again in a moment.", code: "DB_DOWN" });
+      }
+
       const data = insertUserSchema.parse(req.body);
       data.email = data.email.toLowerCase().trim();
       
       const existing = await storage.getUserByEmail(data.email);
       if (existing) {
-        return res.status(400).json({ error: "Email already registered" });
+        return res.status(400).json({ error: "Email already registered", code: "EMAIL_EXISTS" });
       }
 
       const user = await storage.createUser(data);
@@ -117,25 +127,38 @@ export async function registerRoutes(
       res.json({ user: safeUser });
     } catch (err) {
       if (err instanceof ZodError) {
-        return res.status(400).json({ error: err.errors[0]?.message || "Invalid data" });
+        return res.status(400).json({ error: err.errors[0]?.message || "Invalid data", code: "VALIDATION_ERROR" });
       }
       console.error("Register error:", err);
-      res.status(500).json({ error: "Registration failed" });
+      const message = (err as any)?.code === "ECONNREFUSED"
+        ? "Database is temporarily unavailable. Please try again in a moment."
+        : "Registration failed. Please try again.";
+      res.status(500).json({ error: message, code: "SERVER_ERROR" });
     }
   });
 
   app.post("/api/auth/login", async (req, res) => {
     try {
+      if (!process.env.DATABASE_URL) {
+        return res.status(503).json({ error: "Server configuration error: database not configured", code: "DB_NOT_CONFIGURED" });
+      }
+
+      try {
+        await db.execute(sql`SELECT 1`);
+      } catch {
+        return res.status(503).json({ error: "Database is temporarily unavailable. Please try again in a moment.", code: "DB_DOWN" });
+      }
+
       const data = loginSchema.parse(req.body);
       
       const user = await storage.getUserByEmail(data.email.toLowerCase().trim());
       if (!user) {
-        return res.status(401).json({ error: "Invalid email or password" });
+        return res.status(401).json({ error: "Invalid email or password", code: "INVALID_CREDENTIALS" });
       }
 
       const valid = await storage.verifyPassword(data.password, user.password);
       if (!valid) {
-        return res.status(401).json({ error: "Invalid email or password" });
+        return res.status(401).json({ error: "Invalid email or password", code: "INVALID_CREDENTIALS" });
       }
 
       const synced = await storage.syncUserRoles(user.id, user.email);
@@ -147,10 +170,13 @@ export async function registerRoutes(
       res.json({ user: userData });
     } catch (err) {
       if (err instanceof ZodError) {
-        return res.status(400).json({ error: err.errors[0]?.message || "Invalid data" });
+        return res.status(400).json({ error: err.errors[0]?.message || "Invalid data", code: "VALIDATION_ERROR" });
       }
       console.error("Login error:", err);
-      res.status(500).json({ error: "Login failed" });
+      const message = (err as any)?.code === "ECONNREFUSED"
+        ? "Database is temporarily unavailable. Please try again in a moment."
+        : "Login failed. Please try again.";
+      res.status(500).json({ error: message, code: "SERVER_ERROR" });
     }
   });
 
@@ -1506,6 +1532,50 @@ CRITICAL RULES:
       console.error("Export error:", err);
       res.status(500).json({ error: "Export failed" });
     }
+  });
+
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      version: process.env.APP_VERSION || "1.0.0",
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  app.get("/api/ready", async (_req, res) => {
+    const checks: { db: boolean; env: Record<string, boolean>; errors: string[] } = {
+      db: false,
+      env: {},
+      errors: [],
+    };
+
+    try {
+      await db.execute(sql`SELECT 1`);
+      checks.db = true;
+    } catch (err: any) {
+      checks.errors.push(`Database unreachable: ${err.message || "connection failed"}`);
+    }
+
+    const requiredEnvVars = ["DATABASE_URL", "SESSION_SECRET"];
+    for (const key of requiredEnvVars) {
+      const exists = !!process.env[key];
+      checks.env[key] = exists;
+      if (!exists) {
+        checks.errors.push(`Missing environment variable: ${key}`);
+      }
+    }
+
+    const ready = checks.db && checks.errors.length === 0;
+    res.status(ready ? 200 : 503).json({
+      status: ready ? "ready" : "not_ready",
+      version: process.env.APP_VERSION || "1.0.0",
+      checks: {
+        database: checks.db ? "connected" : "disconnected",
+        environment: checks.env,
+      },
+      errors: checks.errors,
+      timestamp: new Date().toISOString(),
+    });
   });
 
   return httpServer;

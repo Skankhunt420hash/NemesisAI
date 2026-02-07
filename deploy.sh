@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== NemesisAI DigitalOcean Deployment ==="
+echo "=== NemesisAI Deployment ==="
 echo ""
 
 if [ ! -f .env ]; then
@@ -29,36 +29,46 @@ ENVFILE
   echo ""
 fi
 
-echo "Step 1: Install SSL certificate (if not done)"
-if [ ! -d "/etc/letsencrypt/live/nemesiscreator.com" ]; then
-  echo "Installing certbot and getting SSL certificate..."
-  apt-get update && apt-get install -y certbot
-  certbot certonly --standalone -d nemesiscreator.com -d www.nemesiscreator.com --non-interactive --agree-tos --email elbbucheli@gmail.com
-  echo "SSL certificate installed!"
-else
-  echo "SSL certificate already exists."
-fi
+VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+echo "Deploying version: $VERSION"
+echo ""
+
+echo "Step 1: Pull latest code"
+git pull
 
 echo ""
-echo "Step 2: Build and start containers"
-docker compose down 2>/dev/null || true
-docker compose up -d --build
+echo "Step 2: Build containers"
+APP_VERSION=$VERSION docker compose build
 
 echo ""
-echo "Step 3: Wait for database to be ready..."
+echo "Step 3: Push database schema (Drizzle)"
+APP_VERSION=$VERSION docker compose run --rm app npx drizzle-kit push --force 2>/dev/null || echo "Schema push will run on first start"
+
+echo ""
+echo "Step 4: Start containers"
+APP_VERSION=$VERSION docker compose up -d
+
+echo ""
+echo "Step 5: Wait for readiness..."
 sleep 5
 
-echo ""
-echo "Step 4: Push database schema"
-docker compose exec app node -e "
-const { execSync } = require('child_process');
-try { execSync('npx drizzle-kit push', { stdio: 'inherit' }); }
-catch(e) { console.log('Schema push might need manual run'); }
-"
+for i in $(seq 1 10); do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/ready 2>/dev/null || echo "000")
+  if [ "$STATUS" = "200" ]; then
+    echo "App is ready!"
+    break
+  fi
+  echo "Waiting... ($i/10)"
+  sleep 3
+done
 
 echo ""
 echo "=== Deployment complete! ==="
+echo "Version: $VERSION"
 echo "Your app should be live at: https://nemesiscreator.com"
+echo ""
+echo "Health check:  curl https://nemesiscreator.com/api/health"
+echo "Ready check:   curl https://nemesiscreator.com/api/ready"
 echo ""
 echo "Useful commands:"
 echo "  docker compose logs -f app     # View app logs"
