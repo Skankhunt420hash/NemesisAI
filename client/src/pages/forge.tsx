@@ -623,7 +623,7 @@ export default function ForgePage() {
 
   if (!selectedType) {
     return (
-      <div className="min-h-screen obsidian-bg flex flex-col pb-20 md:pb-0">
+      <div className="h-full flex flex-col">
         <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8">
           <div className="text-center mb-8 md:mb-12">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl gold-gradient mb-6 neon-purple-glow">
@@ -700,74 +700,69 @@ export default function ForgePage() {
   }
 
   return (
-    <div className="h-screen obsidian-bg flex flex-col pb-20 md:pb-0">
-      <nav className="sticky top-0 z-50 border-b border-violet-500/20 bg-background/80 backdrop-blur-xl">
-        <div className="max-w-[1920px] mx-auto px-4">
-          <div className="flex items-center justify-between h-14 gap-4">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  setSelectedType(null);
-                  setCurrentProject(null);
-                  setGeneratedCode("");
-                  setChatHistory([]);
-                }}
-                data-testid="button-back"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <div className="w-8 h-8 rounded-md gold-gradient flex items-center justify-center">
-                {selectedTypeConfig && <selectedTypeConfig.icon className="w-5 h-5 text-black" />}
-              </div>
-              <span className="text-lg font-semibold tracking-tight hidden md:block">
-                {selectedTypeConfig?.title}
-              </span>
-              <Badge variant="outline" className="border-violet-500/50 text-violet-400 text-xs">
-                {selectedTypeConfig?.techStack}
-              </Badge>
-            </div>
-
-            <div className="flex items-center gap-2 md:gap-3">
-              {/* Mobile view toggle */}
-              <div className="flex md:hidden border rounded-md border-violet-500/30">
-                <Button
-                  variant={mobileView === "chat" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setMobileView("chat")}
-                  className="text-xs"
-                >
-                  Chat
-                </Button>
-                <Button
-                  variant={mobileView === "preview" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setMobileView("preview")}
-                  className="text-xs"
-                >
-                  Preview
-                </Button>
-              </div>
-
-              {user?.isAdmin && (
-                <Badge variant="outline" className="border-primary text-primary hidden md:flex">
-                  <Crown className="w-3 h-3 mr-1" />
-                  Admin
-                </Badge>
-              )}
-              {user?.isPro && !user?.isAdmin && (
-                <Badge variant="outline" className="border-primary text-primary hidden md:flex">
-                  <Crown className="w-3 h-3 mr-1" />
-                  Pro
-                </Badge>
-              )}
-            </div>
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between h-12 px-4 border-b border-border/50 bg-background/50 backdrop-blur-sm flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setSelectedType(null);
+              setCurrentProject(null);
+              setGeneratedCode("");
+              setChatHistory([]);
+            }}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div className="w-7 h-7 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center">
+            {selectedTypeConfig && <selectedTypeConfig.icon className="w-4 h-4 text-primary" />}
           </div>
+          <span className="text-sm font-heading font-medium hidden md:block">
+            {selectedTypeConfig?.title}
+          </span>
+          <Badge variant="outline" className="text-[10px] border-border/50">
+            {selectedTypeConfig?.techStack}
+          </Badge>
         </div>
-      </nav>
 
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div className="flex items-center gap-2">
+          <div className="flex md:hidden border rounded-md border-border/50">
+            <Button
+              variant={mobileView === "chat" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setMobileView("chat")}
+              className="text-xs"
+            >
+              Chat
+            </Button>
+            <Button
+              variant={mobileView === "preview" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setMobileView("preview")}
+              className="text-xs"
+            >
+              Preview
+            </Button>
+          </div>
+
+          {user?.isAdmin && (
+            <Badge variant="outline" className="border-primary/30 text-primary hidden md:flex text-[10px]">
+              <Crown className="w-3 h-3 mr-1" />
+              Admin
+            </Badge>
+          )}
+          {user?.isPro && !user?.isAdmin && (
+            <Badge variant="outline" className="border-primary/30 text-primary hidden md:flex text-[10px]">
+              <Crown className="w-3 h-3 mr-1" />
+              Pro
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Chat Panel - hidden on mobile when preview is active */}
         <div className={`${mobileView === "preview" ? "hidden md:flex" : "flex"} w-full md:w-[400px] md:min-w-[350px] border-b md:border-b-0 md:border-r border-violet-500/20 flex-col bg-card/30 max-h-[50vh] md:max-h-none`}>
           <div className="p-4 border-b border-violet-500/20 space-y-4">
@@ -1248,7 +1243,7 @@ export default function ForgePage() {
             </Tabs>
           </div>
         </div>
-      </main>
+      </div>
 
       {/* Finish Dialog - Choose Private or Published */}
       <Dialog open={showFinishDialog} onOpenChange={setShowFinishDialog}>

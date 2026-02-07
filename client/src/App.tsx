@@ -4,19 +4,27 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
-import { BottomNav } from "@/components/BottomNav";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { Topbar } from "@/components/topbar";
 import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ForgePage from "@/pages/forge";
+import DashboardPage from "@/pages/dashboard";
+import ToolsPage from "@/pages/tools";
+import TemplatesPage from "@/pages/templates";
+import HistoryPage from "@/pages/history";
 import ArchivePage from "@/pages/archive";
+import BillingPage from "@/pages/billing";
 import ProfilePage from "@/pages/profile";
 import SettingsPage from "@/pages/settings";
+import AdminPage from "@/pages/admin";
 import PricingPage from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
-function ProtectedRoute({ children, showNav = true }: { children: React.ReactNode; showNav?: boolean }) {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
 
@@ -32,12 +40,7 @@ function ProtectedRoute({ children, showNav = true }: { children: React.ReactNod
     return <Redirect to={`/login?redirect=${encodeURIComponent(location)}`} />;
   }
 
-  return (
-    <>
-      {children}
-      {showNav && <BottomNav />}
-    </>
-  );
+  return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -52,10 +55,31 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (user) {
-    return <Redirect to="/forge" />;
+    return <Redirect to="/dashboard" />;
   }
 
   return <>{children}</>;
+}
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  const style = {
+    "--sidebar-width": "16rem",
+    "--sidebar-width-icon": "3.5rem",
+  };
+
+  return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full deep-space-bg">
+        <AppSidebar />
+        <div className="flex flex-col flex-1 min-w-0">
+          <Topbar />
+          <main className="flex-1 overflow-auto">
+            {children}
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
 }
 
 function Router() {
@@ -72,28 +96,83 @@ function Router() {
           <RegisterPage />
         </PublicRoute>
       </Route>
+
+      <Route path="/dashboard">
+        <ProtectedRoute>
+          <AppLayout>
+            <DashboardPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/create">
+        <ProtectedRoute>
+          <AppLayout>
+            <ForgePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
       <Route path="/forge">
         <ProtectedRoute>
-          <ForgePage />
+          <AppLayout>
+            <ForgePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/tools">
+        <ProtectedRoute>
+          <AppLayout>
+            <ToolsPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/templates">
+        <ProtectedRoute>
+          <AppLayout>
+            <TemplatesPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/history">
+        <ProtectedRoute>
+          <AppLayout>
+            <HistoryPage />
+          </AppLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/archive">
         <ProtectedRoute>
-          <ArchivePage />
+          <AppLayout>
+            <ArchivePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/billing">
+        <ProtectedRoute>
+          <AppLayout>
+            <BillingPage />
+          </AppLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/profile">
         <ProtectedRoute>
-          <ProfilePage />
+          <AppLayout>
+            <ProfilePage />
+          </AppLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/settings">
         <ProtectedRoute>
-          <SettingsPage />
+          <AppLayout>
+            <SettingsPage />
+          </AppLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/dashboard">
-        <Redirect to="/forge" />
+      <Route path="/admin">
+        <ProtectedRoute>
+          <AppLayout>
+            <AdminPage />
+          </AppLayout>
+        </ProtectedRoute>
       </Route>
       <Route path="/pricing" component={PricingPage} />
       <Route component={NotFound} />

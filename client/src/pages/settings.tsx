@@ -4,15 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { 
-  Settings as SettingsIcon,
   Bell,
-  Moon,
   Volume2,
   Shield,
   CreditCard,
-  ArrowLeft
 } from "lucide-react";
-import { Link } from "wouter";
 import { useState } from "react";
 
 export default function SettingsPage() {
@@ -22,18 +18,11 @@ export default function SettingsPage() {
   const [darkMode, setDarkMode] = useState(true);
 
   return (
-    <div className="min-h-screen obsidian-bg pb-20 md:pb-0">
-      <div className="max-w-2xl mx-auto p-4 md:p-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/profile">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold">Settings</h1>
-            <p className="text-muted-foreground text-sm">Manage your preferences</p>
-          </div>
+    <div className="p-6 md:p-8">
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-2xl font-heading font-semibold tracking-tight" data-testid="text-settings-title">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your preferences</p>
         </div>
 
         <div className="space-y-6">
