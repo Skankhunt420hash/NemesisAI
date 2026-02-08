@@ -25,6 +25,10 @@ import WorkspacePage from "@/pages/workspace";
 import DiagnosticsPage from "@/pages/diagnostics";
 import ResetPasswordPage from "@/pages/reset-password";
 import PricingPage from "@/pages/pricing";
+import VoicePage from "@/pages/voice";
+import ExportsPage from "@/pages/exports";
+import SystemPage from "@/pages/system";
+import SetupPage from "@/pages/setup";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -59,7 +63,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (user) {
-    return <Redirect to="/dashboard" />;
+    return <Redirect to="/forge" />;
   }
 
   return <>{children}</>;
@@ -119,13 +123,7 @@ function Router() {
           </AppLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/create">
-        <ProtectedRoute>
-          <AppLayout>
-            <ForgePage />
-          </AppLayout>
-        </ProtectedRoute>
-      </Route>
+
       <Route path="/forge">
         <ProtectedRoute>
           <AppLayout>
@@ -133,6 +131,68 @@ function Router() {
           </AppLayout>
         </ProtectedRoute>
       </Route>
+      <Route path="/create">
+        <ProtectedRoute>
+          <AppLayout>
+            <ForgePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/studio/:id">
+        <ProtectedRoute>
+          <AppLayout noOverflow>
+            <WorkspacePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/workspace/:id">
+        <ProtectedRoute>
+          <AppLayout noOverflow>
+            <WorkspacePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/voice">
+        <ProtectedRoute>
+          <AppLayout>
+            <VoicePage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/exports">
+        <ProtectedRoute>
+          <AppLayout>
+            <ExportsPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/system">
+        <ProtectedRoute>
+          <AppLayout>
+            <SystemPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/settings/setup">
+        <ProtectedRoute>
+          <AppLayout>
+            <SetupPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute>
+          <AppLayout>
+            <SettingsPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/tools">
         <ProtectedRoute>
           <AppLayout>
@@ -175,24 +235,10 @@ function Router() {
           </AppLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/settings">
-        <ProtectedRoute>
-          <AppLayout>
-            <SettingsPage />
-          </AppLayout>
-        </ProtectedRoute>
-      </Route>
       <Route path="/admin">
         <ProtectedRoute>
           <AppLayout>
             <AdminPage />
-          </AppLayout>
-        </ProtectedRoute>
-      </Route>
-      <Route path="/workspace/:id">
-        <ProtectedRoute>
-          <AppLayout noOverflow>
-            <WorkspacePage />
           </AppLayout>
         </ProtectedRoute>
       </Route>
@@ -203,6 +249,7 @@ function Router() {
           </AppLayout>
         </ProtectedRoute>
       </Route>
+
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/pricing" component={PricingPage} />
       <Route component={NotFound} />

@@ -5,6 +5,7 @@ import session from "express-session";
 import MemoryStore from "memorystore";
 import OpenAI from "openai";
 import multer from "multer";
+import crypto from "crypto";
 import { getUncachableStripeClient } from "./stripeClient";
 import { loginSchema, insertUserSchema } from "@shared/schema";
 import type { ProjectFiles, AgentStep, AgentResponse } from "@shared/schema";
@@ -13,7 +14,13 @@ import archiver from "archiver";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { generatedApps } from "@shared/schema";
-import { transcribeAudio } from "./replit_integrations/audio/transcribe";
+let transcribeAudio: ((buffer: Buffer) => Promise<string>) | null = null;
+try {
+  const mod = require("./replit_integrations/audio/transcribe");
+  transcribeAudio = mod.transcribeAudio;
+} catch {
+  console.log("[info] Replit audio integration not available, transcription will use OpenAI directly");
+}
 import { createPatch } from "diff";
 
 const MemoryStoreSession = MemoryStore(session);
@@ -275,7 +282,22 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No audio file provided" });
       }
 
-      const text = await transcribeAudio(req.file.buffer);
+      let text: string;
+      if (transcribeAudio) {
+        text = await transcribeAudio(req.file.buffer);
+      } else {
+        const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+          return res.status(503).json({ error: "Transcription not available - OpenAI key not configured" });
+        }
+        const openai = new OpenAI({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+        const file = new File([req.file.buffer], "audio.webm", { type: req.file.mimetype });
+        const result = await openai.audio.transcriptions.create({
+          file,
+          model: "whisper-1",
+        });
+        text = result.text;
+      }
       res.json({ text });
     } catch (err: any) {
       console.error("[transcribe] Error:", err);
@@ -750,6 +772,131 @@ Rules:
     } catch (err) {
       console.error("Finalize error:", err);
       res.status(500).json({ error: "Failed to finalize project" });
+    }
+  });
+
+  app.get("/api/projects/:id/export/zip", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ error: "Invalid project ID" });
+      }
+
+      const project = await storage.getApp(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const safeName = project.name.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename=${safeName}.zip`);
+
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      archive.pipe(res);
+
+      if (project.projectFiles) {
+        const files = typeof project.projectFiles === "string" ? JSON.parse(project.projectFiles) : project.projectFiles;
+        for (const [filePath, content] of Object.entries(files)) {
+          archive.append(String(content), { name: filePath });
+        }
+      } else if (project.generatedCode) {
+        const ext = project.language === "python" ? "py" : project.language === "html" ? "html" : "jsx";
+        archive.append(project.generatedCode, { name: `src/App.${ext}` });
+        archive.append(buildAppHtml(project), { name: "index.html" });
+      }
+
+      archive.append(JSON.stringify({
+        name: project.name,
+        appType: project.appType,
+        language: project.language,
+        createdAt: project.createdAt,
+        version: "1.0.0",
+      }, null, 2), { name: "manifest.json" });
+
+      await archive.finalize();
+    } catch (err) {
+      console.error("Project export error:", err);
+      res.status(500).json({ error: "Export failed" });
+    }
+  });
+
+  app.post("/api/releases", requireAuth, async (req, res) => {
+    try {
+      const { projectId, version, notes, isPublic } = req.body;
+      if (!projectId || !version) {
+        return res.status(400).json({ error: "projectId and version are required" });
+      }
+
+      const project = await storage.getApp(projectId);
+      if (!project || project.userId !== req.session.userId) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const shareToken = crypto.randomBytes(16).toString("hex");
+      const release = await storage.createRelease({
+        projectId,
+        userId: req.session.userId!,
+        version,
+        shareToken,
+        notes: notes || "",
+        isPublic: isPublic !== false,
+      });
+
+      res.json(release);
+    } catch (err) {
+      console.error("Create release error:", err);
+      res.status(500).json({ error: "Failed to create release" });
+    }
+  });
+
+  app.get("/api/releases", requireAuth, async (req, res) => {
+    try {
+      const releases = await storage.getReleasesByUser(req.session.userId!);
+      res.json(releases);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch releases" });
+    }
+  });
+
+  app.get("/api/releases/:token", async (req, res) => {
+    try {
+      const release = await storage.getReleaseByShareToken(req.params.token as string);
+      if (!release || !release.isPublic) {
+        return res.status(404).json({ error: "Release not found" });
+      }
+
+      const project = await storage.getApp(release.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({
+        release,
+        project: {
+          id: project.id,
+          name: project.name,
+          appType: project.appType,
+          language: project.language,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch release" });
+    }
+  });
+
+  app.get("/api/projects/:id/releases", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id as string);
+      if (isNaN(projectId)) return res.status(400).json({ error: "Invalid project ID" });
+
+      const releases = await storage.getReleasesByProject(projectId);
+      res.json(releases);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch releases" });
     }
   });
 

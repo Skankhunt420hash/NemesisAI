@@ -544,18 +544,18 @@ export default function ForgePage() {
       });
       if (!res.ok) throw new Error("Failed to create project");
       const project = await res.json();
-      setLocation(`/workspace/${project.id}`);
+      setLocation(`/studio/${project.id}`);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
 
   const handleOpenWorkspace = (app: GeneratedApp) => {
-    setLocation(`/workspace/${app.id}`);
+    setLocation(`/studio/${app.id}`);
   };
 
   const handleLoadFromHistory = async (app: GeneratedApp) => {
-    setLocation(`/workspace/${app.id}`);
+    setLocation(`/studio/${app.id}`);
   };
 
   const renderPreview = () => {

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { users, generatedApps, projectMessages, passwordResetTokens, type User, type InsertUser, type GeneratedApp, type InsertGeneratedApp, type ProjectMessage, type InsertProjectMessage } from "@shared/schema";
+import { users, generatedApps, projectMessages, passwordResetTokens, releases, type User, type InsertUser, type GeneratedApp, type InsertGeneratedApp, type ProjectMessage, type InsertProjectMessage, type Release, type InsertRelease } from "@shared/schema";
 import { eq, desc, sql, and, lt } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
@@ -42,6 +42,10 @@ export interface IStorage {
   getProduct(productId: string): Promise<any>;
   listProducts(active?: boolean): Promise<any[]>;
   getSubscription(subscriptionId: string): Promise<any>;
+  createRelease(release: InsertRelease): Promise<Release>;
+  getReleasesByProject(projectId: number): Promise<Release[]>;
+  getReleasesByUser(userId: number): Promise<Release[]>;
+  getReleaseByShareToken(shareToken: string): Promise<Release | undefined>;
 }
 
 class DatabaseStorage implements IStorage {
@@ -238,6 +242,24 @@ class DatabaseStorage implements IStorage {
       sql`SELECT * FROM stripe.subscriptions WHERE id = ${subscriptionId}`
     );
     return result.rows[0] || null;
+  }
+
+  async createRelease(release: InsertRelease): Promise<Release> {
+    const [created] = await db.insert(releases).values(release).returning();
+    return created;
+  }
+
+  async getReleasesByProject(projectId: number): Promise<Release[]> {
+    return db.select().from(releases).where(eq(releases.projectId, projectId)).orderBy(desc(releases.createdAt));
+  }
+
+  async getReleasesByUser(userId: number): Promise<Release[]> {
+    return db.select().from(releases).where(eq(releases.userId, userId)).orderBy(desc(releases.createdAt));
+  }
+
+  async getReleaseByShareToken(shareToken: string): Promise<Release | undefined> {
+    const [release] = await db.select().from(releases).where(eq(releases.shareToken, shareToken));
+    return release;
   }
 }
 

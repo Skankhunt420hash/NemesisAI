@@ -15,34 +15,40 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import {
-  LayoutDashboard,
-  Plus,
-  Wrench,
-  LayoutTemplate,
-  FolderClock,
-  CreditCard,
+  Sparkles,
+  Hammer,
+  Mic,
+  Package,
+  Activity,
   Settings,
   ShieldCheck,
-  Sparkles,
-  Activity,
+  CreditCard,
+  LayoutDashboard,
+  Wrench as SetupIcon,
 } from "lucide-react";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Create", url: "/create", icon: Plus },
-  { title: "Tools", url: "/tools", icon: Wrench },
-  { title: "Templates", url: "/templates", icon: LayoutTemplate },
-  { title: "History", url: "/history", icon: FolderClock },
+  { title: "Forge", url: "/forge", icon: Hammer },
+  { title: "Voice Studio", url: "/voice", icon: Mic },
+  { title: "Exports", url: "/exports", icon: Package },
+  { title: "System", url: "/system", icon: Activity },
 ];
 
 const bottomNavItems = [
-  { title: "Billing", url: "/billing", icon: CreditCard },
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Setup", url: "/settings/setup", icon: SetupIcon },
+  { title: "Billing", url: "/billing", icon: CreditCard },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
+
+  const isActive = (url: string) => {
+    if (url === "/settings" && location === "/settings/setup") return false;
+    return location === url || location.startsWith(url + "/");
+  };
 
   return (
     <Sidebar>
@@ -56,7 +62,7 @@ export function AppSidebar() {
               <span className="text-sm font-heading font-semibold tracking-tight text-foreground" data-testid="text-brand-name">
                 NemesisAI
               </span>
-              <p className="text-[10px] text-muted-foreground tracking-widest uppercase">Creator Suite</p>
+              <p className="text-[10px] text-muted-foreground tracking-widest uppercase">Creator Platform</p>
             </div>
           </div>
         </Link>
@@ -67,27 +73,24 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            Main
+            Tools
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNavItems.map((item) => {
-                const isActive = location === item.url || location.startsWith(item.url + "/");
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      data-testid={`nav-${item.title.toLowerCase()}`}
-                    >
-                      <Link href={item.url}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {mainNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -100,50 +103,33 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {bottomNavItems.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      data-testid={`nav-${item.title.toLowerCase()}`}
-                    >
-                      <Link href={item.url}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {bottomNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
               {user?.isAdmin && (
-                <>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={location === "/admin"}
-                      data-testid="nav-admin"
-                    >
-                      <Link href="/admin">
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Admin</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={location === "/diagnostics"}
-                      data-testid="nav-diagnostics"
-                    >
-                      <Link href="/diagnostics">
-                        <Activity className="w-4 h-4" />
-                        <span>Diagnostics</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === "/admin"}
+                    data-testid="nav-admin"
+                  >
+                    <Link href="/admin">
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               )}
             </SidebarMenu>
           </SidebarGroupContent>

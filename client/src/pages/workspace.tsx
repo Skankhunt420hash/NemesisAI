@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import Editor from "@monaco-editor/react";
 import {
@@ -39,6 +40,10 @@ import {
   Clock,
   Minus,
   X,
+  MessageSquare,
+  Bug,
+  Download,
+  PanelLeftOpen,
 } from "lucide-react";
 import type { GeneratedApp, ProjectMessage, ProjectFiles, AgentStep } from "@shared/schema";
 
@@ -138,7 +143,9 @@ function StepIndicator({ step }: { step: AgentStep }) {
 
 export default function WorkspacePage() {
   const { user } = useAuth();
-  const [, params] = useRoute("/workspace/:id");
+  const [, workspaceParams] = useRoute("/workspace/:id");
+  const [, studioParams] = useRoute("/studio/:id");
+  const params = workspaceParams || studioParams;
   const projectId = params?.id ? parseInt(params.id) : null;
   const { toast } = useToast();
 
@@ -154,6 +161,7 @@ export default function WorkspacePage() {
   const [previewKey, setPreviewKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [bottomTab, setBottomTab] = useState("agent");
+  const [filesOpen, setFilesOpen] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -225,6 +233,7 @@ export default function WorkspacePage() {
     setSelectedFile(name);
     setNewFileName("");
     setShowNewFileInput(false);
+    setFilesOpen(false);
     saveFileMutation.mutate({ filepath: name, content: "" });
   };
 
@@ -380,6 +389,24 @@ export default function WorkspacePage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleExportZip = async () => {
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/export/zip`, { credentials: "include" });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project?.name?.replace(/\s+/g, "-").toLowerCase() || "project"}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Exported", description: "Project downloaded as ZIP" });
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    }
+  };
+
   if (projectLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -400,14 +427,83 @@ export default function WorkspacePage() {
   const fileList = Object.keys(files).sort();
 
   return (
-    <div className="flex flex-col h-full bg-background" data-testid="workspace-container">
+    <div className="flex flex-col h-full bg-background" data-testid="studio-container">
       <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b bg-card/50 shrink-0">
         <div className="flex items-center gap-2">
+          <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" data-testid="button-toggle-files">
+                <PanelLeftOpen className="w-4 h-4" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0">
+              <SheetHeader className="px-3 py-2 border-b">
+                <SheetTitle className="text-sm flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <FolderTree className="w-4 h-4" /> Files
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowNewFileInput(true)}
+                    data-testid="button-new-file-drawer"
+                  >
+                    <FilePlus className="w-3.5 h-3.5" />
+                  </Button>
+                </SheetTitle>
+              </SheetHeader>
+              {showNewFileInput && (
+                <div className="flex items-center gap-1 px-3 py-2 border-b">
+                  <input
+                    type="text"
+                    value={newFileName}
+                    onChange={(e) => setNewFileName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleCreateFile(); if (e.key === "Escape") setShowNewFileInput(false); }}
+                    placeholder="filename.ext"
+                    className="flex-1 text-xs bg-transparent border-b border-primary/30 outline-none px-1 py-0.5"
+                    autoFocus
+                    data-testid="input-new-filename"
+                  />
+                </div>
+              )}
+              <ScrollArea className="h-[calc(100vh-80px)]">
+                <div className="py-1">
+                  {fileList.map(filepath => {
+                    const name = filepath.split("/").pop() || filepath;
+                    return (
+                      <FileTreeNode
+                        key={filepath}
+                        name={name}
+                        path={filepath}
+                        isSelected={selectedFile === filepath}
+                        onSelect={(p) => { setSelectedFile(p); setFilesOpen(false); }}
+                        onDelete={handleDeleteFile}
+                      />
+                    );
+                  })}
+                  {fileList.length === 0 && (
+                    <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                      No files yet. Use the agent to generate code.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </SheetContent>
+          </Sheet>
           <Bot className="w-4 h-4 text-primary" />
-          <span className="text-sm font-heading font-medium truncate max-w-[200px]">{project.name}</span>
+          <span className="text-sm font-heading font-medium truncate max-w-[200px]" data-testid="text-project-name">{project.name}</span>
           <Badge variant="outline" className="text-[10px]">{project.appType}</Badge>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs gap-1"
+            onClick={handleExportZip}
+            data-testid="button-export-zip"
+          >
+            <Download className="w-3 h-3" /> Export
+          </Button>
           {liveUrl && (
             <Button
               variant="ghost"
@@ -440,64 +536,9 @@ export default function WorkspacePage() {
       </div>
 
       <PanelGroup direction="horizontal" className="flex-1 min-h-0">
-        <Panel defaultSize={18} minSize={12} maxSize={30}>
-          <div className="flex flex-col h-full border-r bg-card/30">
-            <div className="flex items-center justify-between gap-1 px-2 py-1.5 border-b">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Files</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5"
-                onClick={() => setShowNewFileInput(true)}
-                data-testid="button-new-file"
-              >
-                <FilePlus className="w-3 h-3" />
-              </Button>
-            </div>
-            {showNewFileInput && (
-              <div className="flex items-center gap-1 px-2 py-1 border-b">
-                <input
-                  type="text"
-                  value={newFileName}
-                  onChange={(e) => setNewFileName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleCreateFile(); if (e.key === "Escape") setShowNewFileInput(false); }}
-                  placeholder="filename.ext"
-                  className="flex-1 text-xs bg-transparent border-b border-primary/30 outline-none px-1 py-0.5"
-                  autoFocus
-                  data-testid="input-new-filename"
-                />
-              </div>
-            )}
-            <ScrollArea className="flex-1">
-              <div className="py-1">
-                {fileList.map(filepath => {
-                  const name = filepath.split("/").pop() || filepath;
-                  return (
-                    <FileTreeNode
-                      key={filepath}
-                      name={name}
-                      path={filepath}
-                      isSelected={selectedFile === filepath}
-                      onSelect={setSelectedFile}
-                      onDelete={handleDeleteFile}
-                    />
-                  );
-                })}
-                {fileList.length === 0 && (
-                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                    No files yet. Use the agent to generate your project.
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          </div>
-        </Panel>
-
-        <PanelResizeHandle className="w-1 bg-border/50 hover:bg-primary/30 transition-colors" />
-
-        <Panel defaultSize={42} minSize={25}>
+        <Panel defaultSize={50} minSize={30}>
           <PanelGroup direction="vertical">
-            <Panel defaultSize={70} minSize={30}>
+            <Panel defaultSize={65} minSize={30}>
               <div className="flex flex-col h-full">
                 {selectedFile ? (
                   <>
@@ -534,7 +575,7 @@ export default function WorkspacePage() {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
                     <FileCode className="w-10 h-10" />
-                    <p className="text-sm">Select a file to edit or use the agent to start building</p>
+                    <p className="text-sm">Select a file or use the agent to start building</p>
                   </div>
                 )}
               </div>
@@ -542,17 +583,21 @@ export default function WorkspacePage() {
 
             <PanelResizeHandle className="h-1 bg-border/50 hover:bg-primary/30 transition-colors" />
 
-            <Panel defaultSize={30} minSize={15} maxSize={60}>
+            <Panel defaultSize={35} minSize={15} maxSize={60}>
               <div className="flex flex-col h-full border-t">
                 <Tabs value={bottomTab} onValueChange={setBottomTab} className="flex flex-col h-full">
-                  <TabsList className="h-7 px-2 rounded-none border-b bg-card/30 justify-start gap-0">
+                  <TabsList className="h-8 px-2 rounded-none border-b bg-card/30 justify-start gap-0">
                     <TabsTrigger value="agent" className="text-[10px] h-6 px-2 gap-1 rounded-sm" data-testid="tab-agent">
-                      <Bot className="w-3 h-3" />
-                      Agent
+                      <Bot className="w-3 h-3" /> Agent
                     </TabsTrigger>
                     <TabsTrigger value="terminal" className="text-[10px] h-6 px-2 gap-1 rounded-sm" data-testid="tab-terminal">
-                      <Terminal className="w-3 h-3" />
-                      Terminal
+                      <Terminal className="w-3 h-3" /> Terminal
+                    </TabsTrigger>
+                    <TabsTrigger value="chat" className="text-[10px] h-6 px-2 gap-1 rounded-sm" data-testid="tab-chat">
+                      <MessageSquare className="w-3 h-3" /> Chat
+                    </TabsTrigger>
+                    <TabsTrigger value="logs" className="text-[10px] h-6 px-2 gap-1 rounded-sm" data-testid="tab-logs">
+                      <Bug className="w-3 h-3" /> Logs
                     </TabsTrigger>
                   </TabsList>
 
@@ -564,7 +609,7 @@ export default function WorkspacePage() {
                         ))}
                         {agentSteps.length === 0 && !isAgentRunning && (
                           <div className="text-muted-foreground py-2 text-center">
-                            Agent ready. Type a command below to start.
+                            Agent ready. Type a command below.
                           </div>
                         )}
                         {isAgentRunning && (
@@ -591,83 +636,56 @@ export default function WorkspacePage() {
                       </div>
                     </ScrollArea>
                   </TabsContent>
-                </Tabs>
-              </div>
-            </Panel>
-          </PanelGroup>
-        </Panel>
 
-        <PanelResizeHandle className="w-1 bg-border/50 hover:bg-primary/30 transition-colors" />
-
-        <Panel defaultSize={40} minSize={20}>
-          <PanelGroup direction="vertical">
-            <Panel defaultSize={70} minSize={30}>
-              <div className="flex flex-col h-full">
-                <div className="flex items-center gap-2 px-3 py-1 border-b bg-card/30 text-xs">
-                  <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Preview</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 ml-auto"
-                    onClick={() => setPreviewKey(k => k + 1)}
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                  </Button>
-                </div>
-                <div className="flex-1 min-h-0 bg-white">
-                  {Object.keys(files).length > 0 ? (
-                    <iframe
-                      key={previewKey}
-                      srcDoc={getPreviewHtml()}
-                      className="w-full h-full border-0"
-                      sandbox="allow-scripts allow-modals"
-                      title="Preview"
-                      data-testid="preview-iframe"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full bg-card/30 gap-3">
-                      <Eye className="w-10 h-10 text-muted-foreground" />
-                      <p className="text-xs text-muted-foreground">Preview will appear here</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Panel>
-
-            <PanelResizeHandle className="h-1 bg-border/50 hover:bg-primary/30 transition-colors" />
-
-            <Panel defaultSize={30} minSize={15} maxSize={50}>
-              <div className="flex flex-col h-full border-t">
-                <div className="flex items-center gap-2 px-3 py-1 border-b bg-card/30 text-xs">
-                  <Bot className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-muted-foreground">Chat</span>
-                </div>
-                <ScrollArea className="flex-1 min-h-0">
-                  <div className="p-3 space-y-3">
-                    {messagesData?.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`text-xs ${msg.role === "user" ? "text-foreground" : "text-muted-foreground"}`}
-                      >
-                        <span className={`font-semibold ${msg.role === "user" ? "text-primary" : "text-emerald-400"}`}>
-                          {msg.role === "user" ? "You" : "Agent"}:
-                        </span>{" "}
-                        {msg.content}
+                  <TabsContent value="chat" className="flex-1 m-0 min-h-0">
+                    <ScrollArea className="h-full">
+                      <div className="p-3 space-y-3">
+                        {messagesData?.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`text-xs ${msg.role === "user" ? "text-foreground" : "text-muted-foreground"}`}
+                          >
+                            <span className={`font-semibold ${msg.role === "user" ? "text-primary" : "text-emerald-400"}`}>
+                              {msg.role === "user" ? "You" : "Agent"}:
+                            </span>{" "}
+                            {msg.content}
+                          </div>
+                        ))}
+                        {(!messagesData || messagesData.length === 0) && (
+                          <div className="text-center text-xs text-muted-foreground py-2">
+                            Conversation history will appear here
+                          </div>
+                        )}
+                        <div ref={chatEndRef} />
                       </div>
-                    ))}
-                    <div ref={chatEndRef} />
-                  </div>
-                </ScrollArea>
-                <div className="p-2 border-t">
+                    </ScrollArea>
+                  </TabsContent>
+
+                  <TabsContent value="logs" className="flex-1 m-0 min-h-0">
+                    <ScrollArea className="h-full">
+                      <div className="p-2 space-y-1 text-xs font-mono text-muted-foreground">
+                        <div className="flex items-center gap-2 py-1 text-primary">
+                          <Bug className="w-3.5 h-3.5" />
+                          <span>Bug Hunter Vision</span>
+                        </div>
+                        <div className="text-center py-4">
+                          <p className="text-muted-foreground">No issues detected.</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">Errors from the preview will appear here with fix suggestions.</p>
+                        </div>
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+                </Tabs>
+
+                <div className="p-2 border-t bg-card/30">
                   <div className="flex gap-1.5">
                     <Textarea
                       ref={textareaRef}
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder={isAgentRunning ? "Agent working..." : 'Tell the agent what to do... (e.g. "Add a dark mode toggle")'}
-                      className="min-h-[36px] max-h-[80px] text-xs resize-none bg-card/50"
+                      placeholder={isAgentRunning ? "Agent working..." : 'Tell the agent what to build... (e.g. "Add a contact form with validation")'}
+                      className="min-h-[48px] max-h-[120px] text-sm resize-none bg-card/50"
                       disabled={isAgentRunning}
                       data-testid="input-agent-prompt"
                     />
@@ -688,6 +706,43 @@ export default function WorkspacePage() {
               </div>
             </Panel>
           </PanelGroup>
+        </Panel>
+
+        <PanelResizeHandle className="w-1 bg-border/50 hover:bg-primary/30 transition-colors" />
+
+        <Panel defaultSize={50} minSize={25}>
+          <div className="flex flex-col h-full">
+            <div className="flex items-center gap-2 px-3 py-1 border-b bg-card/30 text-xs">
+              <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-muted-foreground">Preview</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 ml-auto"
+                onClick={() => setPreviewKey(k => k + 1)}
+                data-testid="button-refresh-preview-header"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </Button>
+            </div>
+            <div className="flex-1 min-h-0 bg-white">
+              {Object.keys(files).length > 0 ? (
+                <iframe
+                  key={previewKey}
+                  srcDoc={getPreviewHtml()}
+                  className="w-full h-full border-0"
+                  sandbox="allow-scripts allow-modals"
+                  title="Preview"
+                  data-testid="preview-iframe"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full bg-card/30 gap-3">
+                  <Eye className="w-10 h-10 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">Preview will appear here</p>
+                </div>
+              )}
+            </div>
+          </div>
         </Panel>
       </PanelGroup>
     </div>

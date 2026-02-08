@@ -51,6 +51,18 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const releases = pgTable("releases", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => generatedApps.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  version: text("version").notNull(),
+  shareToken: text("share_token").notNull().unique(),
+  notes: text("notes").default(""),
+  artifactUrl: text("artifact_url"),
+  isPublic: boolean("is_public").default(true).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -92,12 +104,19 @@ export const insertProjectMessageSchema = createInsertSchema(projectMessages).om
   createdAt: true,
 });
 
+export const insertReleaseSchema = createInsertSchema(releases).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type GeneratedApp = typeof generatedApps.$inferSelect;
 export type InsertGeneratedApp = z.infer<typeof insertGeneratedAppSchema>;
 export type ProjectMessage = typeof projectMessages.$inferSelect;
 export type InsertProjectMessage = z.infer<typeof insertProjectMessageSchema>;
+export type Release = typeof releases.$inferSelect;
+export type InsertRelease = z.infer<typeof insertReleaseSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 

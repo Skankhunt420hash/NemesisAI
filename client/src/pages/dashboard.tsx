@@ -46,45 +46,45 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Link href="/create">
+        <Link href="/forge">
           <Card className="glass-card glass-card-hover cursor-pointer group h-full" data-testid="card-quick-create">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="w-10 h-10 rounded-md flex items-center justify-center bg-primary/10 border border-primary/20 glow-cyan-subtle">
                 <Plus className="w-5 h-5 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-heading font-medium">New Project</p>
-                <p className="text-xs text-muted-foreground">Start building</p>
+                <p className="text-sm font-heading font-medium">Forge</p>
+                <p className="text-xs text-muted-foreground">Create an app</p>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </CardContent>
           </Card>
         </Link>
 
-        <Link href="/tools">
-          <Card className="glass-card glass-card-hover cursor-pointer group h-full" data-testid="card-quick-tools">
+        <Link href="/voice">
+          <Card className="glass-card glass-card-hover cursor-pointer group h-full" data-testid="card-quick-voice">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="w-10 h-10 rounded-md flex items-center justify-center bg-accent/20 border border-accent/20 glow-violet-subtle">
                 <Wrench className="w-5 h-5 text-accent-foreground" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-heading font-medium">AI Tools</p>
-                <p className="text-xs text-muted-foreground">14 tools available</p>
+                <p className="text-sm font-heading font-medium">Voice Studio</p>
+                <p className="text-xs text-muted-foreground">Speak to build</p>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </CardContent>
           </Card>
         </Link>
 
-        <Link href="/history">
-          <Card className="glass-card glass-card-hover cursor-pointer group h-full" data-testid="card-quick-history">
+        <Link href="/exports">
+          <Card className="glass-card glass-card-hover cursor-pointer group h-full" data-testid="card-quick-exports">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="w-10 h-10 rounded-md flex items-center justify-center bg-muted border border-border/50">
                 <FolderClock className="w-5 h-5 text-muted-foreground" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-heading font-medium">Projects</p>
-                <p className="text-xs text-muted-foreground">{apps.length} total</p>
+                <p className="text-sm font-heading font-medium">Exports</p>
+                <p className="text-xs text-muted-foreground">{apps.length} projects</p>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </CardContent>
@@ -128,7 +128,7 @@ export default function DashboardPage() {
             {recentApps.map((app) => {
               const Icon = appTypeIcons[app.appType || "web"] || Globe;
               return (
-                <Link href={`/workspace/${app.id}`}>
+                <Link href={`/studio/${app.id}`}>
                 <Card key={app.id} className="glass-card hover-elevate cursor-pointer" data-testid={`card-project-${app.id}`}>
                   <CardContent className="p-4 flex items-start gap-3">
                     <div className="w-9 h-9 rounded-md flex items-center justify-center bg-muted/50 border border-border/50 flex-shrink-0">

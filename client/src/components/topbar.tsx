@@ -28,22 +28,24 @@ import {
   Settings,
   LogOut,
   LayoutDashboard,
-  Plus,
-  Wrench,
-  LayoutTemplate,
-  FolderClock,
+  Hammer,
+  Mic,
+  Package,
+  Activity,
   CreditCard,
   ShieldCheck,
+  Wrench,
 } from "lucide-react";
 
 const commandItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard", group: "Navigation" },
-  { title: "Create New App", icon: Plus, url: "/create", group: "Navigation" },
-  { title: "AI Tools", icon: Wrench, url: "/tools", group: "Navigation" },
-  { title: "Templates", icon: LayoutTemplate, url: "/templates", group: "Navigation" },
-  { title: "History", icon: FolderClock, url: "/history", group: "Navigation" },
-  { title: "Billing", icon: CreditCard, url: "/billing", group: "Account" },
+  { title: "Forge", icon: Hammer, url: "/forge", group: "Navigation" },
+  { title: "Voice Studio", icon: Mic, url: "/voice", group: "Navigation" },
+  { title: "Exports", icon: Package, url: "/exports", group: "Navigation" },
+  { title: "System", icon: Activity, url: "/system", group: "Navigation" },
   { title: "Settings", icon: Settings, url: "/settings", group: "Account" },
+  { title: "Setup Wizard", icon: Wrench, url: "/settings/setup", group: "Account" },
+  { title: "Billing", icon: CreditCard, url: "/billing", group: "Account" },
   { title: "Admin Panel", icon: ShieldCheck, url: "/admin", group: "Account" },
 ];
 
