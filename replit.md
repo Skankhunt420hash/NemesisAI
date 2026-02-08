@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 - **Database**: PostgreSQL with Drizzle ORM
 - **Schema**: Defined in `shared/schema.ts`
-- **Tables**: `users`, `generatedApps`, `conversations`, `messages`, `password_reset_tokens`.
+- **Tables**: `users`, `generatedApps`, `conversations`, `messages`, `password_reset_tokens`, `releases`.
 
 ### Enterprise AI Features (High-Level)
 - **GOD-MODE AGENT**: Autonomous issue detection and fixing.
@@ -56,18 +56,28 @@ Preferred communication style: Simple, everyday language.
 - **PANIC BUTTON / SAFE MODE**: One-click restore to a stable state.
 - **NEMESIS CONFIDENCE SCORE™**: Provides stability, security, UX, and scalability scores.
 
+### Self-Hosted Deployment
+- **Fully Decoupled from Replit**: All Replit-specific features (audio integration, Stripe connector, Vite plugins) are optional with graceful fallbacks.
+- **Docker Compose**: `docker compose up -d` starts web app + PostgreSQL + nginx (HTTPS reverse proxy).
+- **Session Store**: In-memory for development, PostgreSQL (`connect-pg-simple`) for production.
+- **Stripe**: Fully optional. Accepts `STRIPE_SECRET_KEY` env var directly or Replit connector. If neither is set, payment features are disabled gracefully.
+- **OpenAI**: Accepts `OPENAI_API_KEY` or `AI_INTEGRATIONS_OPENAI_API_KEY` (Replit).
+- **Audio Transcription**: Falls back to OpenAI Whisper if Replit audio integration is unavailable.
+- **Configuration**: `.env.example` documents all required and optional environment variables.
+- **Deploy Script**: `deploy.sh` handles build, schema push, and readiness checks.
+
 ## External Dependencies
 
 - **AI Services**:
-    - **OpenAI API**: For code generation and audio transcription (via Replit AI Integrations).
-- **Payment Processing**:
-    - **Stripe**: For subscription management and billing, integrated with `stripe-replit-sync`.
+    - **OpenAI API**: For code generation and audio transcription. Supports direct `OPENAI_API_KEY` or Replit AI integration.
+- **Payment Processing (Optional)**:
+    - **Stripe**: For subscription management. Works with `STRIPE_SECRET_KEY` env var or Replit Stripe connector. Disabled if not configured.
 - **Database**:
-    - **PostgreSQL**: Primary data store, accessed via `DATABASE_URL`.
-- **Replit Integrations**:
-    - Utilized for various functionalities including AI model access, image generation, batch processing, and chat helpers.
+    - **PostgreSQL**: Primary data store. Auto-configured via docker-compose or set `DATABASE_URL` directly.
+- **Replit Integrations (Optional)**:
+    - Audio transcription, image generation, batch processing, chat helpers - all degrade gracefully when unavailable.
 - **Deployment**:
-    - **DigitalOcean**: Deployment files (`Dockerfile`, `docker-compose.yml`, `nginx.conf`, `deploy.sh`) are prepared for DigitalOcean infrastructure.
-    - **deploy.sh flow**: `git pull` → `docker compose build` (with APP_VERSION) → `drizzle-kit push` → `docker compose up -d` → readiness check loop.
+    - **Self-Hosted**: Docker Compose with web app + PostgreSQL + nginx. Works on any Linux server (DigitalOcean, AWS, etc.).
+    - **deploy.sh flow**: Build containers → Start DB → Schema push → Start all → Readiness check.
     - **Cache Busting**: Vite production builds use content-hashed filenames by default (`[name]-[hash].js`).
     - **Docker Healthcheck**: Dockerfile includes `HEALTHCHECK` pointing to `/api/health`.

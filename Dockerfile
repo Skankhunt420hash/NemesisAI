@@ -20,6 +20,8 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
 ENV NODE_ENV=production
 ENV PORT=5000

@@ -3,10 +3,11 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import session from "express-session";
 import MemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import OpenAI from "openai";
 import multer from "multer";
 import crypto from "crypto";
-import { getUncachableStripeClient } from "./stripeClient";
+import { getUncachableStripeClient, isStripeConfigured } from "./stripeClient";
 import { loginSchema, insertUserSchema } from "@shared/schema";
 import type { ProjectFiles, AgentStep, AgentResponse } from "@shared/schema";
 import { ZodError } from "zod";
@@ -91,16 +92,33 @@ export async function registerRoutes(
     console.warn("[auth] SESSION_SECRET not set, using default (not secure for production)");
   }
 
+  const isProduction = process.env.NODE_ENV === "production";
+  const databaseUrl = process.env.DATABASE_URL;
+
+  let sessionStore: session.Store;
+  if (isProduction && databaseUrl) {
+    const PgStore = connectPgSimple(session);
+    sessionStore = new PgStore({
+      conString: databaseUrl,
+      createTableIfMissing: true,
+      tableName: "user_sessions",
+    });
+    console.log("[auth] Using PostgreSQL session store");
+  } else {
+    sessionStore = new MemoryStoreSession({
+      checkPeriod: 86400000,
+    });
+    console.log("[auth] Using in-memory session store");
+  }
+
   app.use(
     session({
       secret: sessionSecret || "nemesis-secret-key-change-in-production",
       resave: false,
       saveUninitialized: false,
-      store: new MemoryStoreSession({
-        checkPeriod: 86400000,
-      }),
+      store: sessionStore,
       cookie: {
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction,
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000,
       },
@@ -378,6 +396,10 @@ Rules:
 
   app.post("/api/checkout", requireAuth, async (req, res) => {
     try {
+      if (!isStripeConfigured()) {
+        return res.status(503).json({ error: "Payment processing is not configured", code: "STRIPE_NOT_CONFIGURED" });
+      }
+
       const user = await storage.getUser(req.session.userId!);
       if (!user) {
         return res.status(401).json({ error: "User not found" });
@@ -798,8 +820,8 @@ Rules:
       const archive = archiver("zip", { zlib: { level: 9 } });
       archive.pipe(res);
 
-      if (project.projectFiles) {
-        const files = typeof project.projectFiles === "string" ? JSON.parse(project.projectFiles) : project.projectFiles;
+      if (project.filesJson) {
+        const files = typeof project.filesJson === "string" ? JSON.parse(project.filesJson) : project.filesJson;
         for (const [filePath, content] of Object.entries(files)) {
           archive.append(String(content), { name: filePath });
         }
@@ -1628,6 +1650,9 @@ CRITICAL RULES:
     })();
 
     checks.stripe = await (async () => {
+      if (!isStripeConfigured()) {
+        return { status: "warning" as const, message: "Stripe not configured (optional - set STRIPE_SECRET_KEY to enable payments)" };
+      }
       try {
         const client = await getUncachableStripeClient();
         if (client) return { status: "ok" as const, message: "Stripe client available" };

@@ -2,9 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { runMigrations } from 'stripe-replit-sync';
-import { getStripeSync } from './stripeClient';
-import { WebhookHandlers } from './webhookHandlers';
+import { isStripeConfigured } from './stripeClient';
 
 const app = express();
 const httpServer = createServer(app);
@@ -27,31 +25,40 @@ export function log(message: string, source = "express") {
 }
 
 async function initStripe() {
-  const databaseUrl = process.env.DATABASE_URL;
+  if (!isStripeConfigured()) {
+    log('Stripe not configured (no STRIPE_SECRET_KEY or Replit connector), skipping', 'stripe');
+    return;
+  }
 
+  const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     log('DATABASE_URL not set, skipping Stripe initialization', 'stripe');
     return;
   }
 
   try {
+    const { runMigrations } = await import('stripe-replit-sync');
+    const { getStripeSync } = await import('./stripeClient');
+
     log('Initializing Stripe schema...', 'stripe');
-    await runMigrations({ 
+    await runMigrations({
       databaseUrl,
       schema: 'stripe'
-    });
+    } as any);
     log('Stripe schema ready', 'stripe');
 
     const stripeSync = await getStripeSync();
 
     log('Setting up managed webhook...', 'stripe');
-    const domains = process.env.REPLIT_DOMAINS?.split(',')[0];
+    const domains = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.APP_DOMAIN;
     if (domains) {
       const webhookBaseUrl = `https://${domains}`;
       const { webhook } = await stripeSync.findOrCreateManagedWebhook(
         `${webhookBaseUrl}/api/stripe/webhook`
       );
       log(`Webhook configured: ${webhook.url}`, 'stripe');
+    } else {
+      log('No domain configured for webhook (set APP_DOMAIN or REPLIT_DOMAINS)', 'stripe');
     }
 
     log('Syncing Stripe data...', 'stripe');
@@ -70,32 +77,35 @@ async function initStripe() {
 (async () => {
   await initStripe();
 
-  app.post(
-    '/api/stripe/webhook',
-    express.raw({ type: 'application/json' }),
-    async (req, res) => {
-      const signature = req.headers['stripe-signature'];
+  if (isStripeConfigured()) {
+    app.post(
+      '/api/stripe/webhook',
+      express.raw({ type: 'application/json' }),
+      async (req, res) => {
+        const signature = req.headers['stripe-signature'];
 
-      if (!signature) {
-        return res.status(400).json({ error: 'Missing stripe-signature' });
-      }
-
-      try {
-        const sig = Array.isArray(signature) ? signature[0] : signature;
-
-        if (!Buffer.isBuffer(req.body)) {
-          log('STRIPE WEBHOOK ERROR: req.body is not a Buffer', 'stripe');
-          return res.status(500).json({ error: 'Webhook processing error' });
+        if (!signature) {
+          return res.status(400).json({ error: 'Missing stripe-signature' });
         }
 
-        await WebhookHandlers.processWebhook(req.body as Buffer, sig);
-        res.status(200).json({ received: true });
-      } catch (error: any) {
-        log(`Webhook error: ${error.message}`, 'stripe');
-        res.status(400).json({ error: 'Webhook processing error' });
+        try {
+          const { WebhookHandlers } = await import('./webhookHandlers');
+          const sig = Array.isArray(signature) ? signature[0] : signature;
+
+          if (!Buffer.isBuffer(req.body)) {
+            log('STRIPE WEBHOOK ERROR: req.body is not a Buffer', 'stripe');
+            return res.status(500).json({ error: 'Webhook processing error' });
+          }
+
+          await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+          res.status(200).json({ received: true });
+        } catch (error: any) {
+          log(`Webhook error: ${error.message}`, 'stripe');
+          res.status(400).json({ error: 'Webhook processing error' });
+        }
       }
-    }
-  );
+    );
+  }
 
   app.use(
     express.json({
