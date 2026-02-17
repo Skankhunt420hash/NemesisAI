@@ -10,7 +10,8 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "apk:prepare": "bash script/prepare-android.sh",
-    "apk:build": "bash script/build-apk.sh"
+    "apk:build": "bash script/build-apk.sh",
+    "ops:diagnose": "bash script/server-diagnose.sh"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",

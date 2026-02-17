@@ -58,7 +58,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Self-Hosted Deployment
 - **Fully Self-Hosted**: No Replit runtime/connectors required. Deploy on any Linux server with Docker.
-- **Docker Compose**: `docker compose up -d` starts web app + PostgreSQL + nginx (HTTPS reverse proxy).
+- **Docker Compose**: `docker compose up -d` starts web app + PostgreSQL + Caddy (automatic HTTPS reverse proxy).
 - **Session Store**: In-memory for development, PostgreSQL (`connect-pg-simple`) for production.
 - **Stripe**: Fully optional. Uses `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`. If not configured, payment features are disabled gracefully.
 - **OpenAI**: Accepts `OPENAI_API_KEY` (or `AI_INTEGRATIONS_OPENAI_API_KEY` for compatibility).
@@ -77,7 +77,7 @@ Preferred communication style: Simple, everyday language.
 - **Optional Integrations**:
     - Audio transcription, image generation, batch processing, chat helpers - all run with direct OpenAI credentials.
 - **Deployment**:
-    - **Self-Hosted**: Docker Compose with web app + PostgreSQL + nginx. Works on any Linux server (DigitalOcean, AWS, etc.).
+    - **Self-Hosted**: Docker Compose with web app + PostgreSQL + Caddy. Works on any Linux server (DigitalOcean, AWS, etc.).
     - **deploy.sh flow**: Build containers → Start DB → Schema push → Start all → Readiness check.
     - **Cache Busting**: Vite production builds use content-hashed filenames by default (`[name]-[hash].js`).
     - **Docker Healthcheck**: Dockerfile includes `HEALTHCHECK` pointing to `/api/health`.

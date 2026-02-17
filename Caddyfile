@@ -1,0 +1,13 @@
+{
+    email {$ACME_EMAIL}
+}
+
+# Fallback for direct IP access and initial debugging.
+:80 {
+    reverse_proxy app:5000
+}
+
+# Production domain with automatic HTTPS certificates.
+{$APP_DOMAIN:localhost} {
+    reverse_proxy app:5000
+}

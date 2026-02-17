@@ -88,7 +88,7 @@ else
 fi
 echo ""
 echo "Commands:"
-echo "  docker compose logs -f app     # View app logs"
+echo "  docker compose logs -f app proxy   # View app/proxy logs"
 echo "  docker compose restart app     # Restart app"
 echo "  docker compose down            # Stop everything"
 echo "  docker compose up -d --build   # Rebuild and start"
