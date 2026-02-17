@@ -647,7 +647,14 @@ expo build:ios
 \`\`\`
 `, { name: "README.md" });
 
-      archive.append("", { name: "assets/.gitkeep" });
+      const placeholderPng = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+KV4sAAAAASUVORK5CYII=",
+        "base64"
+      );
+      archive.append(placeholderPng, { name: "assets/icon.png" });
+      archive.append(placeholderPng, { name: "assets/splash.png" });
+      archive.append(placeholderPng, { name: "assets/adaptive-icon.png" });
+      archive.append(placeholderPng, { name: "assets/favicon.png" });
 
       await archive.finalize();
     } catch (err) {
