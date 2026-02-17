@@ -83,6 +83,40 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+async function registerOptionalReplitIntegrations(app: Express): Promise<void> {
+  const hasOpenAIKey = Boolean(
+    process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
+  );
+  if (!hasOpenAIKey) {
+    console.log("[integrations] OpenAI key missing, skipping optional Replit integration routes");
+    return;
+  }
+
+  try {
+    const { registerAudioRoutes } = await import("./replit_integrations/audio");
+    registerAudioRoutes(app);
+    console.log("[integrations] Audio routes enabled");
+  } catch (error) {
+    console.warn("[integrations] Failed to register audio routes:", error);
+  }
+
+  try {
+    const { registerChatRoutes } = await import("./replit_integrations/chat");
+    registerChatRoutes(app);
+    console.log("[integrations] Chat routes enabled");
+  } catch (error) {
+    console.warn("[integrations] Failed to register chat routes:", error);
+  }
+
+  try {
+    const { registerImageRoutes } = await import("./replit_integrations/image");
+    registerImageRoutes(app);
+    console.log("[integrations] Image routes enabled");
+  } catch (error) {
+    console.warn("[integrations] Failed to register image routes:", error);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -124,6 +158,8 @@ export async function registerRoutes(
       },
     })
   );
+
+  await registerOptionalReplitIntegrations(app);
 
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -394,28 +430,33 @@ Rules:
     }
   });
 
-  app.post("/api/checkout", requireAuth, async (req, res) => {
+  const getOrCreateStripeCustomerId = async (userId: number): Promise<string> => {
+    const user = await storage.getUser(userId);
+    if (!user) {
+      throw new Error("USER_NOT_FOUND");
+    }
+    if (user.stripeCustomerId) {
+      return user.stripeCustomerId;
+    }
+
+    const stripe = await getUncachableStripeClient();
+    const customer = await stripe.customers.create({
+      email: user.email,
+      metadata: { userId: String(user.id) },
+    });
+    await storage.updateUser(user.id, { stripeCustomerId: customer.id });
+    return customer.id;
+  };
+
+  const createCheckoutSession = async (req: Request, res: Response) => {
     try {
       if (!isStripeConfigured()) {
         return res.status(503).json({ error: "Payment processing is not configured", code: "STRIPE_NOT_CONFIGURED" });
       }
 
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) {
-        return res.status(401).json({ error: "User not found" });
-      }
-
       const stripe = await getUncachableStripeClient();
-
-      let customerId = user.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          metadata: { userId: String(user.id) },
-        });
-        await storage.updateUser(user.id, { stripeCustomerId: customer.id });
-        customerId = customer.id;
-      }
+      const customerId = await getOrCreateStripeCustomerId(req.session.userId!);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
 
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -435,16 +476,53 @@ Rules:
           },
         ],
         mode: "subscription",
-        success_url: `${req.protocol}://${req.get("host")}/forge?success=true`,
-        cancel_url: `${req.protocol}://${req.get("host")}/pricing?canceled=true`,
+        success_url: `${baseUrl}/forge?success=true`,
+        cancel_url: `${baseUrl}/pricing?canceled=true`,
       });
+
+      if (!session.url) {
+        return res.status(500).json({ error: "Stripe did not return a checkout URL" });
+      }
 
       res.json({ url: session.url });
     } catch (err) {
+      if (err instanceof Error && err.message === "USER_NOT_FOUND") {
+        return res.status(401).json({ error: "User not found" });
+      }
       console.error("Checkout error:", err);
       res.status(500).json({ error: "Failed to create checkout session" });
     }
-  });
+  };
+
+  const createPortalSession = async (req: Request, res: Response) => {
+    try {
+      if (!isStripeConfigured()) {
+        return res.status(503).json({ error: "Payment processing is not configured", code: "STRIPE_NOT_CONFIGURED" });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const customerId = await getOrCreateStripeCustomerId(req.session.userId!);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+      const portal = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${baseUrl}/billing`,
+      });
+
+      res.json({ url: portal.url });
+    } catch (err) {
+      if (err instanceof Error && err.message === "USER_NOT_FOUND") {
+        return res.status(401).json({ error: "User not found" });
+      }
+      console.error("Billing portal error:", err);
+      res.status(500).json({ error: "Failed to create billing portal session" });
+    }
+  };
+
+  app.post("/api/checkout", requireAuth, createCheckoutSession);
+  app.post("/api/create-checkout-session", requireAuth, createCheckoutSession);
+  app.post("/api/billing/portal", requireAuth, createPortalSession);
+  app.post("/api/create-portal-session", requireAuth, createPortalSession);
 
   app.patch("/api/apps/:id", requireAuth, async (req, res) => {
     try {
