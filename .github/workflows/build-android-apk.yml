@@ -1,0 +1,59 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      cap_server_url:
+        description: "Public URL of your live NemesisAI instance (e.g. https://nemesis.example.com)"
+        required: true
+        type: string
+      cap_app_id:
+        description: "Android application ID"
+        required: false
+        default: "com.nemesisai.creator"
+        type: string
+      cap_app_name:
+        description: "Android app display name"
+        required: false
+        default: "NemesisAI"
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build APK
+        env:
+          CAP_SERVER_URL: ${{ inputs.cap_server_url }}
+          CAP_APP_ID: ${{ inputs.cap_app_id }}
+          CAP_APP_NAME: ${{ inputs.cap_app_name }}
+        run: npm run apk:build
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nemesisai-android-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

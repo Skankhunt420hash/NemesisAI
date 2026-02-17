@@ -25,7 +25,7 @@ Preferred communication style: Simple, everyday language.
 - **API Pattern**: RESTful JSON API endpoints
 - **Session Management**: express-session with PostgreSQL store
 - **Authentication**: Session-based with bcrypt hashing; supports public, authenticated, and Pro subscription access levels.
-- **AI Integration**: OpenAI API for code generation, integrated via Replit AI.
+- **AI Integration**: OpenAI API for code generation and transcription (direct API integration).
 - **Core Workflow**: Iterative App Factory for persistent project sessions, incremental code updates via Server-Sent Events (SSE), and AI-driven code modification based on user prompts.
 - **Admin System**: Admin bypass for Pro features, `requireAdmin` middleware.
 - **Error Handling**: Standardized structured errors `{ error, code, action }` with specific codes: `INVALID_CREDENTIALS`, `DB_DOWN`, `DB_NOT_CONFIGURED`, `VALIDATION_ERROR`, `EMAIL_EXISTS`, `SERVER_ERROR`.
@@ -57,11 +57,11 @@ Preferred communication style: Simple, everyday language.
 - **NEMESIS CONFIDENCE SCORE™**: Provides stability, security, UX, and scalability scores.
 
 ### Self-Hosted Deployment
-- **Fully Decoupled from Replit**: All Replit-specific features (audio integration, Stripe connector, Vite plugins) are optional with graceful fallbacks.
+- **Fully Self-Hosted**: No Replit runtime/connectors required. Deploy on any Linux server with Docker.
 - **Docker Compose**: `docker compose up -d` starts web app + PostgreSQL + nginx (HTTPS reverse proxy).
 - **Session Store**: In-memory for development, PostgreSQL (`connect-pg-simple`) for production.
-- **Stripe**: Fully optional. Accepts `STRIPE_SECRET_KEY` env var directly or Replit connector. If neither is set, payment features are disabled gracefully.
-- **OpenAI**: Accepts `OPENAI_API_KEY` or `AI_INTEGRATIONS_OPENAI_API_KEY` (Replit).
+- **Stripe**: Fully optional. Uses `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`. If not configured, payment features are disabled gracefully.
+- **OpenAI**: Accepts `OPENAI_API_KEY` (or `AI_INTEGRATIONS_OPENAI_API_KEY` for compatibility).
 - **Audio Transcription**: Falls back to OpenAI Whisper if Replit audio integration is unavailable.
 - **Configuration**: `.env.example` documents all required and optional environment variables.
 - **Deploy Script**: `deploy.sh` handles build, schema push, and readiness checks.
@@ -74,8 +74,8 @@ Preferred communication style: Simple, everyday language.
     - **Stripe**: For subscription management. Works with `STRIPE_SECRET_KEY` env var or Replit Stripe connector. Disabled if not configured.
 - **Database**:
     - **PostgreSQL**: Primary data store. Auto-configured via docker-compose or set `DATABASE_URL` directly.
-- **Replit Integrations (Optional)**:
-    - Audio transcription, image generation, batch processing, chat helpers - all degrade gracefully when unavailable.
+- **Optional Integrations**:
+    - Audio transcription, image generation, batch processing, chat helpers - all run with direct OpenAI credentials.
 - **Deployment**:
     - **Self-Hosted**: Docker Compose with web app + PostgreSQL + nginx. Works on any Linux server (DigitalOcean, AWS, etc.).
     - **deploy.sh flow**: Build containers → Start DB → Schema push → Start all → Readiness check.
