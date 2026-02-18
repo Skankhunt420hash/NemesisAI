@@ -58,7 +58,8 @@ import {
   Brain,
   Network,
   Activity,
-  Eye
+  Eye,
+  Plus
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Link, useLocation } from "wouter";
@@ -125,6 +126,16 @@ interface ProjectWithMessages extends GeneratedApp {
   messages?: ProjectMessage[];
 }
 
+const createInitialConsoleLogs = (): LogEntry[] => [
+  {
+    id: `c1-${Date.now()}`,
+    type: "info",
+    message: "NemesisAI Preview initialized",
+    timestamp: new Date(),
+    source: "system",
+  },
+];
+
 export default function ForgePage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -147,9 +158,7 @@ export default function ForgePage() {
   const [previewStatus, setPreviewStatus] = useState<"idle" | "installing" | "starting" | "running" | "error" | "crashed">("idle");
   const [previewStatusMessage, setPreviewStatusMessage] = useState("");
   const [terminalLogs, setTerminalLogs] = useState<LogEntry[]>([]);
-  const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([
-    { id: "c1", type: "info", message: "NemesisAI Preview initialized", timestamp: new Date(), source: "system" }
-  ]);
+  const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>(() => createInitialConsoleLogs());
   const [networkRequests, setNetworkRequests] = useState<NetworkRequest[]>([]);
   const [framework, setFramework] = useState("");
 
@@ -164,6 +173,37 @@ export default function ForgePage() {
   }, [chatHistory]);
 
   const canAccess = user?.isAdmin || user?.isPro;
+
+  const resetForgeWorkspace = useCallback((keepSelectedType: boolean) => {
+    if (!keepSelectedType) {
+      setSelectedType(null);
+    }
+    setCurrentProject(null);
+    setGeneratedCode("");
+    setChatHistory([]);
+    setPrompt("");
+    setAppName("My App");
+    setTaskSteps([]);
+    setGenError("");
+    setPreviewStatus("idle");
+    setPreviewStatusMessage("");
+    setTerminalLogs([]);
+    setConsoleLogs(createInitialConsoleLogs());
+    setNetworkRequests([]);
+    setFramework("");
+    setShowInspector(false);
+    setShowFinishDialog(false);
+    setMobileView("chat");
+    setCopied(false);
+  }, []);
+
+  const handleStartNewProject = () => {
+    resetForgeWorkspace(true);
+    toast({
+      title: "New project started",
+      description: "NemesisAI stays as-is. Existing projects remain available in Archive/History.",
+    });
+  };
 
   // Poll preview status when there's a current project
   const pollPreviewStatus = useCallback(async () => {
@@ -727,12 +767,7 @@ export default function ForgePage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => {
-              setSelectedType(null);
-              setCurrentProject(null);
-              setGeneratedCode("");
-              setChatHistory([]);
-            }}
+            onClick={() => resetForgeWorkspace(false)}
             data-testid="button-back"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -749,6 +784,27 @@ export default function ForgePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleStartNewProject}
+            disabled={isGenerating}
+            className="hidden md:inline-flex gap-1 border-violet-500/30"
+            data-testid="button-new-project"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Project
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleStartNewProject}
+            disabled={isGenerating}
+            className="md:hidden"
+            data-testid="button-new-project-mobile"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
           <div className="flex md:hidden border rounded-md border-border/50">
             <Button
               variant={mobileView === "chat" ? "secondary" : "ghost"}
