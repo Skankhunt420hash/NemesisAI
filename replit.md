@@ -33,6 +33,7 @@ Preferred communication style: Simple, everyday language.
 - **Password Reset**: Secure flow with token-based reset.
 - **Health Endpoints**: `GET /api/health` (basic ok + version), `GET /api/ready` (DB + ENV checks, returns 503 if not ready).
 - **Safe Mode**: Frontend polls `/api/ready` every 30s. If not ready, login/register are disabled with an amber "Safe Mode" banner showing the specific error reason.
+- **HTTP Test Mode**: Set `COOKIE_SECURE=false` to allow session cookies over raw IP HTTP during temporary testing (not for production).
 - **APP_VERSION**: Exposed via health/ready endpoints, displayed in UI footer. Set via Docker build arg from git SHA in deploy.sh.
 - **Preview System**: Backend endpoints for managing preview server status, starting/stopping, auto-fixing, and retrieving logs.
 

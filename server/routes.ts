@@ -125,6 +125,7 @@ export async function registerRoutes(
   }
 
   const isProduction = process.env.NODE_ENV === "production";
+  const forceInsecureCookies = process.env.COOKIE_SECURE === "false";
   const databaseUrl = process.env.DATABASE_URL;
 
   let sessionStore: session.Store;
@@ -150,7 +151,8 @@ export async function registerRoutes(
       saveUninitialized: false,
       store: sessionStore,
       cookie: {
-        secure: isProduction,
+        // Allow HTTP cookie testing behind raw IP when explicitly configured.
+        secure: isProduction && !forceInsecureCookies,
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000,
       },
@@ -1798,10 +1800,11 @@ CRITICAL RULES:
   });
 
   app.get("/api/ready", async (_req, res) => {
-    const checks: { db: boolean; env: Record<string, boolean>; errors: string[] } = {
+    const checks: { db: boolean; env: Record<string, boolean>; errors: string[]; warnings: string[] } = {
       db: false,
       env: {},
       errors: [],
+      warnings: [],
     };
 
     try {
@@ -1811,13 +1814,22 @@ CRITICAL RULES:
       checks.errors.push(`Database unreachable: ${err.message || "connection failed"}`);
     }
 
-    const requiredEnvVars = ["DATABASE_URL", "SESSION_SECRET"];
+    const requiredEnvVars = ["DATABASE_URL"];
     for (const key of requiredEnvVars) {
       const exists = !!process.env[key];
       checks.env[key] = exists;
       if (!exists) {
         checks.errors.push(`Missing environment variable: ${key}`);
       }
+    }
+
+    checks.env.SESSION_SECRET = !!process.env.SESSION_SECRET;
+    if (!checks.env.SESSION_SECRET) {
+      checks.warnings.push("SESSION_SECRET not set: using fallback secret (not secure for production)");
+    }
+
+    if (isProduction && forceInsecureCookies) {
+      checks.warnings.push("COOKIE_SECURE=false: secure cookies are disabled for HTTP access");
     }
 
     const ready = checks.db && checks.errors.length === 0;
@@ -1829,6 +1841,7 @@ CRITICAL RULES:
         environment: checks.env,
       },
       errors: checks.errors,
+      warnings: checks.warnings,
       timestamp: new Date().toISOString(),
     });
   });
