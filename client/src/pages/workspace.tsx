@@ -44,6 +44,7 @@ import {
   Bug,
   Download,
   PanelLeftOpen,
+  Plus,
 } from "lucide-react";
 import type { GeneratedApp, ProjectMessage, ProjectFiles, AgentStep } from "@shared/schema";
 
@@ -145,6 +146,7 @@ export default function WorkspacePage() {
   const { user } = useAuth();
   const [, workspaceParams] = useRoute("/workspace/:id");
   const [, studioParams] = useRoute("/studio/:id");
+  const [, setLocation] = useLocation();
   const params = workspaceParams || studioParams;
   const projectId = params?.id ? parseInt(params.id) : null;
   const { toast } = useToast();
@@ -407,6 +409,14 @@ export default function WorkspacePage() {
     }
   };
 
+  const handleStartNewProject = () => {
+    setLocation("/forge");
+    toast({
+      title: "New project",
+      description: "Current NemesisAI project is kept in your history.",
+    });
+  };
+
   if (projectLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -495,6 +505,16 @@ export default function WorkspacePage() {
           <Badge variant="outline" className="text-[10px]">{project.appType}</Badge>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs gap-1"
+            onClick={handleStartNewProject}
+            data-testid="button-start-new-project"
+          >
+            <Plus className="w-3 h-3" />
+            New
+          </Button>
           <Button
             variant="ghost"
             size="sm"
