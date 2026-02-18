@@ -61,17 +61,17 @@ Preferred communication style: Simple, everyday language.
 - **Docker Compose**: `docker compose up -d` starts web app + PostgreSQL + Caddy (automatic HTTPS reverse proxy).
 - **Session Store**: In-memory for development, PostgreSQL (`connect-pg-simple`) for production.
 - **Stripe**: Fully optional. Uses `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`. If not configured, payment features are disabled gracefully.
-- **OpenAI**: Accepts `OPENAI_API_KEY` (or `AI_INTEGRATIONS_OPENAI_API_KEY` for compatibility).
-- **Audio Transcription**: Falls back to OpenAI Whisper if Replit audio integration is unavailable.
+- **OpenAI**: Uses `OPENAI_API_KEY` (optional `OPENAI_BASE_URL` supported).
+- **Audio Transcription**: Falls back to OpenAI Whisper if optional audio tooling is unavailable.
 - **Configuration**: `.env.example` documents all required and optional environment variables.
 - **Deploy Script**: `deploy.sh` handles build, schema push, and readiness checks.
 
 ## External Dependencies
 
 - **AI Services**:
-    - **OpenAI API**: For code generation and audio transcription. Supports direct `OPENAI_API_KEY` or Replit AI integration.
+    - **OpenAI API**: For code generation and audio transcription via direct OpenAI credentials.
 - **Payment Processing (Optional)**:
-    - **Stripe**: For subscription management. Works with `STRIPE_SECRET_KEY` env var or Replit Stripe connector. Disabled if not configured.
+    - **Stripe**: For subscription management via direct `STRIPE_SECRET_KEY` configuration. Disabled if not configured.
 - **Database**:
     - **PostgreSQL**: Primary data store. Auto-configured via docker-compose or set `DATABASE_URL` directly.
 - **Optional Integrations**:

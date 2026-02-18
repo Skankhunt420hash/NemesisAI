@@ -20,7 +20,7 @@ try {
   const mod = require("./replit_integrations/audio/transcribe");
   transcribeAudio = mod.transcribeAudio;
 } catch {
-  console.log("[info] Replit audio integration not available, transcription will use OpenAI directly");
+  console.log("[info] Optional audio transcoder not available, transcription will use OpenAI directly");
 }
 import { createPatch } from "diff";
 
@@ -34,11 +34,11 @@ declare module "express-session" {
 }
 
 function getOpenAIClient() {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const apiKey = process.env.OPENAI_API_KEY;
+  const baseURL = process.env.OPENAI_BASE_URL;
   
   if (!apiKey) {
-    throw new Error("OpenAI API key not configured. Please set AI_INTEGRATIONS_OPENAI_API_KEY or OPENAI_API_KEY environment variable.");
+    throw new Error("OpenAI API key not configured. Please set OPENAI_API_KEY.");
   }
   
   return new OpenAI({
@@ -83,12 +83,10 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-async function registerOptionalReplitIntegrations(app: Express): Promise<void> {
-  const hasOpenAIKey = Boolean(
-    process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
-  );
+async function registerOptionalIntegrations(app: Express): Promise<void> {
+  const hasOpenAIKey = Boolean(process.env.OPENAI_API_KEY);
   if (!hasOpenAIKey) {
-    console.log("[integrations] OpenAI key missing, skipping optional Replit integration routes");
+    console.log("[integrations] OpenAI key missing, skipping optional integration routes");
     return;
   }
 
@@ -159,7 +157,7 @@ export async function registerRoutes(
     })
   );
 
-  await registerOptionalReplitIntegrations(app);
+  await registerOptionalIntegrations(app);
 
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -340,11 +338,11 @@ export async function registerRoutes(
       if (transcribeAudio) {
         text = await transcribeAudio(req.file.buffer);
       } else {
-        const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+        const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) {
           return res.status(503).json({ error: "Transcription not available - OpenAI key not configured" });
         }
-        const openai = new OpenAI({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+        const openai = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
         const file = new File([req.file.buffer], "audio.webm", { type: req.file.mimetype });
         const result = await openai.audio.transcriptions.create({
           file,
@@ -1578,7 +1576,7 @@ Rules:
         ? `Current files:\n${Object.entries(currentFiles).map(([path, code]) => `--- ${path} ---\n${code}`).join("\n\n")}`
         : "No files yet. Create the project from scratch.";
 
-      const systemPrompt = `You are NemesisAI Agent, an expert software developer. You work like Cursor/Replit - you receive instructions and produce complete file contents.
+      const systemPrompt = `You are NemesisAI Agent, an expert software developer. You work like a modern coding agent - you receive instructions and produce complete file contents.
 
 Tech Stack: ${project.language}
 ${techContext}
@@ -1723,7 +1721,7 @@ CRITICAL RULES:
     })();
 
     checks.openai = (() => {
-      const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const key = process.env.OPENAI_API_KEY;
       if (key) return { status: "ok" as const, message: "API key configured" };
       return { status: "error" as const, message: "No OpenAI API key found" };
     })();
