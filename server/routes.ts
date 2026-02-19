@@ -737,10 +737,18 @@ expo build:ios
         return res.status(400).json({ error: "Invalid project ID" });
       }
 
-      const { prompt } = req.body;
+      const { prompt, mode } = req.body as { prompt?: string; mode?: string };
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
       }
+
+      const generationMode = mode === "turbo" ? "turbo" : "standard";
+      const isTurboMode = generationMode === "turbo";
+      const generationModel = isTurboMode ? "gpt-4.1" : "gpt-5.2";
+      const maxCompletionTokens = isTurboMode ? 6144 : 8192;
+      const speedDirective = isTurboMode
+        ? "Turbo mode is ON. Prioritize low-latency output and deliver high-value code quickly."
+        : "Standard mode is ON. Prioritize deeper quality checks and completeness.";
 
       const project = await storage.getApp(projectId);
       if (!project || project.userId !== req.session.userId!) {
@@ -801,7 +809,8 @@ Rules:
 - Preserve all existing functionality that wasn't mentioned
 - Output the complete updated code (not just the changes)
 - Keep the code clean and production-ready
-- Do not add explanations, just output code`
+- Do not add explanations, just output code
+- ${speedDirective}`
         : `You are an expert software developer creating a new ${project.appType} app.
 
 Tech Stack: ${project.language}
@@ -811,16 +820,23 @@ Rules:
 - Generate clean, production-ready code
 - Use modern best practices
 - Output only code, no explanations
-- Make the code modular and reusable`;
+- Make the code modular and reusable
+- ${speedDirective}`;
+
+      res.write(`data: ${JSON.stringify({
+        mode: generationMode,
+        model: generationModel,
+        turbo: isTurboMode,
+      })}\n\n`);
 
       const stream = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: generationModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
         ],
         stream: true,
-        max_completion_tokens: 8192,
+        max_completion_tokens: maxCompletionTokens,
       });
 
       let fullCode = "";
@@ -843,10 +859,15 @@ Rules:
       await storage.addProjectMessage({
         projectId,
         role: "assistant",
-        content: "Code updated successfully.",
+        content: isTurboMode ? "Code updated successfully in Turbo mode." : "Code updated successfully.",
       });
 
-      res.write(`data: ${JSON.stringify({ done: true, projectId })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        done: true,
+        projectId,
+        mode: generationMode,
+        model: generationModel,
+      })}\n\n`);
       res.end();
     } catch (err: any) {
       console.error("Iterate error:", err);
@@ -1522,8 +1543,16 @@ Rules:
       const projectId = parseInt(req.params.id as string);
       if (isNaN(projectId)) return res.status(400).json({ error: "Invalid project ID" });
 
-      const { prompt } = req.body;
+      const { prompt, mode } = req.body as { prompt?: string; mode?: string };
       if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+
+      const agentMode = mode === "turbo" ? "turbo" : "standard";
+      const isTurboMode = agentMode === "turbo";
+      const agentModel = isTurboMode ? "gpt-4.1" : "gpt-5.2";
+      const maxCompletionTokens = isTurboMode ? 12288 : 16384;
+      const speedDirective = isTurboMode
+        ? "Turbo mode is ON. Keep the plan concise, optimize for rapid execution, and avoid unnecessary over-engineering."
+        : "Standard mode is ON. Favor robustness, broader edge-case handling, and more complete architecture decisions.";
 
       const project = await storage.getApp(projectId);
       if (!project || project.userId !== req.session.userId!) {
@@ -1600,18 +1629,26 @@ CRITICAL RULES:
 3. Use proper file extensions (.html, .css, .js, .tsx, .json etc.)
 4. For web apps, the entry file should be index.html
 5. Keep code clean, modern, and production-ready
-6. Output ONLY the JSON object, no markdown fences, no explanations outside the JSON`;
+6. Output ONLY the JSON object, no markdown fences, no explanations outside the JSON
+7. ${speedDirective}`;
+
+      res.write(`data: ${JSON.stringify({
+        type: "meta",
+        mode: agentMode,
+        model: agentModel,
+        turbo: isTurboMode,
+      })}\n\n`);
 
       res.write(`data: ${JSON.stringify({ type: "step", step: { id: "1", type: "plan", description: "Analyzing your request...", status: "running" } })}\n\n`);
 
       const stream = await openai.chat.completions.create({
-        model: "gpt-4.1",
+        model: agentModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
         ],
         stream: true,
-        max_completion_tokens: 16384,
+        max_completion_tokens: maxCompletionTokens,
       });
 
       let fullResponse = "";
@@ -1676,6 +1713,8 @@ CRITICAL RULES:
         content: agentResult.summary,
         messageType: "agent",
         metadata: JSON.stringify({
+          mode: agentMode,
+          model: agentModel,
           steps: agentResult.steps,
           diffs: Object.keys(diffs),
           fileCount: Object.keys(agentResult.files).length,
@@ -1692,10 +1731,17 @@ CRITICAL RULES:
           entryFile: agentResult.entryFile,
           diffs,
           summary: agentResult.summary,
+          mode: agentMode,
+          model: agentModel,
         }
       })}\n\n`);
 
-      res.write(`data: ${JSON.stringify({ type: "done", projectId })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        type: "done",
+        projectId,
+        mode: agentMode,
+        model: agentModel,
+      })}\n\n`);
       res.end();
     } catch (err: any) {
       console.error("Agent error:", err);

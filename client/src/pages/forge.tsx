@@ -58,7 +58,8 @@ import {
   Brain,
   Network,
   Activity,
-  Eye
+  Eye,
+  Zap
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Link, useLocation } from "wouter";
@@ -135,6 +136,7 @@ export default function ForgePage() {
   const [generatedCode, setGeneratedCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [turboMode, setTurboMode] = useState(true);
   const [genError, setGenError] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentProject, setCurrentProject] = useState<ProjectWithMessages | null>(null);
@@ -348,9 +350,10 @@ export default function ForgePage() {
     const steps = createInitialSteps(selectedTypeConfig?.title || "Web App");
     steps[0].status = "running";
     steps[0].timestamp = new Date();
+    steps[0].details = turboMode ? "Turbo mode active for high-speed generation" : "Standard mode active for balanced quality";
     setTaskSteps(steps);
     setPreviewStatus("installing");
-    setPreviewStatusMessage("Generating code...");
+    setPreviewStatusMessage(turboMode ? "Turbo mode generating..." : "Generating code...");
 
     try {
       let projectId = currentProject?.id;
@@ -368,7 +371,10 @@ export default function ForgePage() {
       const res = await fetch(`/api/projects/${projectId}/iterate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: finalPrompt }),
+        body: JSON.stringify({
+          prompt: finalPrompt,
+          mode: turboMode ? "turbo" : "standard",
+        }),
         credentials: "include",
       });
 
@@ -410,7 +416,9 @@ export default function ForgePage() {
 
       setChatHistory(prev => [...prev, { 
         role: "assistant", 
-        content: "Code updated successfully. Check the preview panel.", 
+        content: turboMode
+          ? "Turbo update complete. Preview refreshed."
+          : "Code updated successfully. Check the preview panel.", 
         timestamp: new Date() 
       }]);
       
@@ -421,7 +429,7 @@ export default function ForgePage() {
       setConsoleLogs(prev => [...prev, {
         id: `c${Date.now()}`,
         type: "info" as const,
-        message: "Code generation complete - preview updated",
+        message: turboMode ? "Turbo code generation complete - preview updated" : "Code generation complete - preview updated",
         timestamp: new Date(),
         source: "system"
       }]);
@@ -429,7 +437,7 @@ export default function ForgePage() {
       setNetworkRequests(prev => [...prev, {
         id: `n${Date.now()}`,
         method: "POST",
-        url: `/api/projects/${projectId}/iterate`,
+        url: `/api/projects/${projectId}/iterate?mode=${turboMode ? "turbo" : "standard"}`,
         status: 200,
         statusText: "OK",
         duration: Math.floor(Math.random() * 2000) + 500
@@ -654,8 +662,16 @@ export default function ForgePage() {
               The Forge
             </h1>
             <p className="text-muted-foreground max-w-md mx-auto">
-              Select your creation type to begin building with AI
+              App-Generierung ist hier einfach, schnell und direkt startklar.
             </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <Badge variant="outline" className="border-primary/30 text-primary text-[11px]">Easy Start</Badge>
+              <Badge variant="outline" className="border-violet-500/30 text-violet-300 text-[11px]">High Speed</Badge>
+              <Badge variant="outline" className="border-violet-500/40 text-violet-300 text-[11px] gap-1">
+                <Zap className="h-3 w-3" />
+                Turbo Mode
+              </Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full max-w-4xl px-4">
@@ -827,6 +843,26 @@ export default function ForgePage() {
                 </a>
               </div>
             )}
+
+            <div className="flex items-center justify-between gap-3 p-2 rounded-md bg-black/30 border border-violet-500/20">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-violet-300">Nemesis Turbo</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Einfach prompten, schnell generieren. Turbo treibt den Agenten auf Hochtouren.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={turboMode ? "default" : "outline"}
+                onClick={() => setTurboMode((prev) => !prev)}
+                className={turboMode ? "gap-1 bg-violet-600 hover:bg-violet-500 text-white" : "gap-1"}
+                data-testid="button-toggle-turbo"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                {turboMode ? "ON" : "OFF"}
+              </Button>
+            </div>
           </div>
 
           <ScrollArea className="flex-1 p-4">
@@ -873,7 +909,11 @@ export default function ForgePage() {
           <div className="p-4 border-t border-violet-500/20">
             <div className="flex gap-2">
               <Textarea
-                placeholder={`Describe your ${selectedTypeConfig?.title.toLowerCase()}...`}
+                placeholder={
+                  turboMode
+                    ? `Turbo aktiv: Beschreibe deine ${selectedTypeConfig?.title.toLowerCase()} so konkret wie möglich...`
+                    : `Describe your ${selectedTypeConfig?.title.toLowerCase()}...`
+                }
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 className="min-h-[60px] md:min-h-[80px] resize-none flex-1 border-violet-500/20"
@@ -913,6 +953,13 @@ export default function ForgePage() {
             <div className="flex items-center gap-3">
               <Badge variant="secondary" className="font-mono text-xs">
                 {appName || "Untitled"}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={turboMode ? "border-violet-500/40 text-violet-300 text-xs gap-1" : "text-xs"}
+              >
+                <Zap className="w-3 h-3" />
+                {turboMode ? "Turbo" : "Standard"}
               </Badge>
               {currentProject?.isFinalized && (
                 currentProject.isPublished ? (
