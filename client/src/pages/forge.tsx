@@ -126,6 +126,20 @@ interface ProjectWithMessages extends GeneratedApp {
   messages?: ProjectMessage[];
 }
 
+type BuildSpeedMode = "standard" | "turbo" | "turbo-extreme";
+
+function getBuildModeLabel(mode: BuildSpeedMode): string {
+  if (mode === "turbo-extreme") return "Turbo Extreme";
+  if (mode === "turbo") return "Turbo";
+  return "Standard";
+}
+
+function getBuildModeClass(mode: BuildSpeedMode): string {
+  if (mode === "turbo-extreme") return "border-fuchsia-500/40 text-fuchsia-300";
+  if (mode === "turbo") return "border-violet-500/40 text-violet-300";
+  return "border-border/60 text-muted-foreground";
+}
+
 export default function ForgePage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -136,7 +150,7 @@ export default function ForgePage() {
   const [generatedCode, setGeneratedCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [turboMode, setTurboMode] = useState(true);
+  const [generationMode, setGenerationMode] = useState<BuildSpeedMode>("turbo-extreme");
   const [genError, setGenError] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [currentProject, setCurrentProject] = useState<ProjectWithMessages | null>(null);
@@ -346,14 +360,26 @@ export default function ForgePage() {
 
     setGenError("");
     setIsGenerating(true);
+    const isTurboMode = generationMode === "turbo";
+    const isTurboExtreme = generationMode === "turbo-extreme";
     
     const steps = createInitialSteps(selectedTypeConfig?.title || "Web App");
     steps[0].status = "running";
     steps[0].timestamp = new Date();
-    steps[0].details = turboMode ? "Turbo mode active for high-speed generation" : "Standard mode active for balanced quality";
+    steps[0].details = isTurboExtreme
+      ? "Turbo Extreme active for maximum throughput"
+      : isTurboMode
+        ? "Turbo mode active for high-speed generation"
+        : "Standard mode active for balanced quality";
     setTaskSteps(steps);
     setPreviewStatus("installing");
-    setPreviewStatusMessage(turboMode ? "Turbo mode generating..." : "Generating code...");
+    setPreviewStatusMessage(
+      isTurboExtreme
+        ? "Turbo Extreme generating..."
+        : isTurboMode
+          ? "Turbo mode generating..."
+          : "Generating code..."
+    );
 
     try {
       let projectId = currentProject?.id;
@@ -373,7 +399,7 @@ export default function ForgePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: finalPrompt,
-          mode: turboMode ? "turbo" : "standard",
+          mode: generationMode,
         }),
         credentials: "include",
       });
@@ -416,9 +442,11 @@ export default function ForgePage() {
 
       setChatHistory(prev => [...prev, { 
         role: "assistant", 
-        content: turboMode
-          ? "Turbo update complete. Preview refreshed."
-          : "Code updated successfully. Check the preview panel.", 
+        content: isTurboExtreme
+          ? "Turbo Extreme update complete. Preview refreshed."
+          : isTurboMode
+            ? "Turbo update complete. Preview refreshed."
+            : "Code updated successfully. Check the preview panel.", 
         timestamp: new Date() 
       }]);
       
@@ -429,7 +457,11 @@ export default function ForgePage() {
       setConsoleLogs(prev => [...prev, {
         id: `c${Date.now()}`,
         type: "info" as const,
-        message: turboMode ? "Turbo code generation complete - preview updated" : "Code generation complete - preview updated",
+        message: isTurboExtreme
+          ? "Turbo Extreme generation complete - preview updated"
+          : isTurboMode
+            ? "Turbo code generation complete - preview updated"
+            : "Code generation complete - preview updated",
         timestamp: new Date(),
         source: "system"
       }]);
@@ -437,7 +469,7 @@ export default function ForgePage() {
       setNetworkRequests(prev => [...prev, {
         id: `n${Date.now()}`,
         method: "POST",
-        url: `/api/projects/${projectId}/iterate?mode=${turboMode ? "turbo" : "standard"}`,
+        url: `/api/projects/${projectId}/iterate?mode=${generationMode}`,
         status: 200,
         statusText: "OK",
         duration: Math.floor(Math.random() * 2000) + 500
@@ -671,6 +703,10 @@ export default function ForgePage() {
                 <Zap className="h-3 w-3" />
                 Turbo Mode
               </Badge>
+              <Badge variant="outline" className="border-fuchsia-500/40 text-fuchsia-300 text-[11px] gap-1">
+                <Zap className="h-3 w-3" />
+                Turbo Extreme
+              </Badge>
             </div>
           </div>
 
@@ -846,22 +882,49 @@ export default function ForgePage() {
 
             <div className="flex items-center justify-between gap-3 p-2 rounded-md bg-black/30 border border-violet-500/20">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-violet-300">Nemesis Turbo</p>
+                <p className="text-xs font-medium text-violet-300">Nemesis Speed Engine</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Einfach prompten, schnell generieren. Turbo treibt den Agenten auf Hochtouren.
+                  Wähle Standard, Turbo oder Turbo Extreme für deinen Build-Speed.
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={turboMode ? "default" : "outline"}
-                onClick={() => setTurboMode((prev) => !prev)}
-                className={turboMode ? "gap-1 bg-violet-600 hover:bg-violet-500 text-white" : "gap-1"}
-                data-testid="button-toggle-turbo"
-              >
-                <Zap className="h-3.5 w-3.5" />
-                {turboMode ? "ON" : "OFF"}
-              </Button>
+              <div className="inline-flex items-center rounded-md border border-border/70 bg-card/50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setGenerationMode("standard")}
+                  className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                    generationMode === "standard"
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid="button-mode-standard"
+                >
+                  Standard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenerationMode("turbo")}
+                  className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                    generationMode === "turbo"
+                      ? "bg-violet-500/20 text-violet-300"
+                      : "text-muted-foreground hover:text-violet-300"
+                  }`}
+                  data-testid="button-mode-turbo"
+                >
+                  Turbo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenerationMode("turbo-extreme")}
+                  className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                    generationMode === "turbo-extreme"
+                      ? "bg-fuchsia-500/20 text-fuchsia-300"
+                      : "text-muted-foreground hover:text-fuchsia-300"
+                  }`}
+                  data-testid="button-mode-turbo-extreme"
+                >
+                  Extreme
+                </button>
+              </div>
             </div>
           </div>
 
@@ -910,7 +973,9 @@ export default function ForgePage() {
             <div className="flex gap-2">
               <Textarea
                 placeholder={
-                  turboMode
+                  generationMode === "turbo-extreme"
+                    ? `Turbo Extreme aktiv: Gib eine komplette, ambitionierte Spezifikation für deine ${selectedTypeConfig?.title.toLowerCase()} ein...`
+                    : generationMode === "turbo"
                     ? `Turbo aktiv: Beschreibe deine ${selectedTypeConfig?.title.toLowerCase()} so konkret wie möglich...`
                     : `Describe your ${selectedTypeConfig?.title.toLowerCase()}...`
                 }
@@ -934,6 +999,13 @@ export default function ForgePage() {
                   size="icon"
                   onClick={() => handleIterate()}
                   disabled={!prompt.trim() || isGenerating}
+                  className={
+                    generationMode === "turbo-extreme"
+                      ? "bg-fuchsia-600 hover:bg-fuchsia-500 text-white"
+                      : generationMode === "turbo"
+                        ? "bg-violet-600 hover:bg-violet-500 text-white"
+                        : ""
+                  }
                   data-testid="button-generate"
                 >
                   {isGenerating ? (
@@ -956,10 +1028,10 @@ export default function ForgePage() {
               </Badge>
               <Badge
                 variant="outline"
-                className={turboMode ? "border-violet-500/40 text-violet-300 text-xs gap-1" : "text-xs"}
+                className={`text-xs gap-1 ${getBuildModeClass(generationMode)}`}
               >
                 <Zap className="w-3 h-3" />
-                {turboMode ? "Turbo" : "Standard"}
+                {getBuildModeLabel(generationMode)}
               </Badge>
               {currentProject?.isFinalized && (
                 currentProject.isPublished ? (

@@ -742,13 +742,24 @@ expo build:ios
         return res.status(400).json({ error: "Prompt is required" });
       }
 
-      const generationMode = mode === "turbo" ? "turbo" : "standard";
-      const isTurboMode = generationMode === "turbo";
-      const generationModel = isTurboMode ? "gpt-4.1" : "gpt-5.2";
-      const maxCompletionTokens = isTurboMode ? 6144 : 8192;
-      const speedDirective = isTurboMode
-        ? "Turbo mode is ON. Prioritize low-latency output and deliver high-value code quickly."
-        : "Standard mode is ON. Prioritize deeper quality checks and completeness.";
+      const generationMode = mode === "turbo-extreme"
+        ? "turbo-extreme"
+        : mode === "turbo"
+          ? "turbo"
+          : "standard";
+      const isTurboMode = generationMode !== "standard";
+      const isTurboExtreme = generationMode === "turbo-extreme";
+      const generationModel = generationMode === "standard" ? "gpt-5.2" : "gpt-4.1";
+      const maxCompletionTokens = generationMode === "turbo-extreme"
+        ? 4096
+        : generationMode === "turbo"
+          ? 6144
+          : 8192;
+      const speedDirective = generationMode === "turbo-extreme"
+        ? "Turbo Extreme mode is ON. Deliver the fastest possible, production-usable implementation with minimal latency and no unnecessary verbosity."
+        : generationMode === "turbo"
+          ? "Turbo mode is ON. Prioritize low-latency output and deliver high-value code quickly."
+          : "Standard mode is ON. Prioritize deeper quality checks and completeness.";
 
       const project = await storage.getApp(projectId);
       if (!project || project.userId !== req.session.userId!) {
@@ -827,6 +838,7 @@ Rules:
         mode: generationMode,
         model: generationModel,
         turbo: isTurboMode,
+        extreme: isTurboExtreme,
       })}\n\n`);
 
       const stream = await openai.chat.completions.create({
@@ -859,7 +871,11 @@ Rules:
       await storage.addProjectMessage({
         projectId,
         role: "assistant",
-        content: isTurboMode ? "Code updated successfully in Turbo mode." : "Code updated successfully.",
+        content: isTurboExtreme
+          ? "Code updated successfully in Turbo Extreme mode."
+          : isTurboMode
+            ? "Code updated successfully in Turbo mode."
+            : "Code updated successfully.",
       });
 
       res.write(`data: ${JSON.stringify({
@@ -1546,13 +1562,24 @@ Rules:
       const { prompt, mode } = req.body as { prompt?: string; mode?: string };
       if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
-      const agentMode = mode === "turbo" ? "turbo" : "standard";
-      const isTurboMode = agentMode === "turbo";
-      const agentModel = isTurboMode ? "gpt-4.1" : "gpt-5.2";
-      const maxCompletionTokens = isTurboMode ? 12288 : 16384;
-      const speedDirective = isTurboMode
-        ? "Turbo mode is ON. Keep the plan concise, optimize for rapid execution, and avoid unnecessary over-engineering."
-        : "Standard mode is ON. Favor robustness, broader edge-case handling, and more complete architecture decisions.";
+      const agentMode = mode === "turbo-extreme"
+        ? "turbo-extreme"
+        : mode === "turbo"
+          ? "turbo"
+          : "standard";
+      const isTurboMode = agentMode !== "standard";
+      const isTurboExtreme = agentMode === "turbo-extreme";
+      const agentModel = agentMode === "standard" ? "gpt-5.2" : "gpt-4.1";
+      const maxCompletionTokens = agentMode === "turbo-extreme"
+        ? 8192
+        : agentMode === "turbo"
+          ? 12288
+          : 16384;
+      const speedDirective = agentMode === "turbo-extreme"
+        ? "Turbo Extreme mode is ON. Keep the plan ultra-compact, reduce token usage, and optimize for maximum execution speed while preserving correctness."
+        : agentMode === "turbo"
+          ? "Turbo mode is ON. Keep the plan concise, optimize for rapid execution, and avoid unnecessary over-engineering."
+          : "Standard mode is ON. Favor robustness, broader edge-case handling, and more complete architecture decisions.";
 
       const project = await storage.getApp(projectId);
       if (!project || project.userId !== req.session.userId!) {
@@ -1637,6 +1664,7 @@ CRITICAL RULES:
         mode: agentMode,
         model: agentModel,
         turbo: isTurboMode,
+        extreme: isTurboExtreme,
       })}\n\n`);
 
       res.write(`data: ${JSON.stringify({ type: "step", step: { id: "1", type: "plan", description: "Analyzing your request...", status: "running" } })}\n\n`);

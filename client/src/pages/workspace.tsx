@@ -49,11 +49,13 @@ import {
 } from "lucide-react";
 import type { GeneratedApp, ProjectMessage, ProjectFiles, AgentStep } from "@shared/schema";
 
+type AgentExecutionMode = "standard" | "turbo" | "turbo-extreme";
+
 interface AgentEvent {
   type: "step" | "stream" | "result" | "error" | "done" | "meta";
   step?: AgentStep;
   content?: string;
-  mode?: "standard" | "turbo";
+  mode?: AgentExecutionMode;
   model?: string;
   turbo?: boolean;
   result?: {
@@ -62,11 +64,23 @@ interface AgentEvent {
     entryFile: string;
     diffs: Record<string, string>;
     summary: string;
-    mode?: "standard" | "turbo";
+    mode?: AgentExecutionMode;
     model?: string;
   };
   error?: string;
   projectId?: number;
+}
+
+function getModeLabel(mode?: AgentExecutionMode): string {
+  if (mode === "turbo-extreme") return "Turbo Extreme";
+  if (mode === "turbo") return "Turbo";
+  return "Standard";
+}
+
+function getModePillClass(mode: AgentExecutionMode): string {
+  if (mode === "turbo-extreme") return "border-fuchsia-500/40 text-fuchsia-300";
+  if (mode === "turbo") return "border-violet-500/40 text-violet-300";
+  return "border-border/60 text-muted-foreground";
 }
 
 function getLanguageFromPath(filepath: string): string {
@@ -175,7 +189,7 @@ export default function WorkspacePage() {
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [entryFile, setEntryFile] = useState<string>("index.html");
   const [prompt, setPrompt] = useState("");
-  const [agentMode, setAgentMode] = useState<"standard" | "turbo">("turbo");
+  const [agentMode, setAgentMode] = useState<AgentExecutionMode>("turbo-extreme");
   const [isAgentRunning, setIsAgentRunning] = useState(false);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [agentLogs, setAgentLogs] = useState<string[]>([]);
@@ -193,6 +207,7 @@ export default function WorkspacePage() {
     "Refaktoriere den Code für bessere Performance und klare Struktur.",
     "Füge Stripe-Checkout mit sauberem Error-Handling hinzu.",
     "Erstelle responsive Landingpage + Kontaktformular mit Validierung.",
+    "Baue eine komplette SaaS-App mit Adminbereich, Billing und Analytics.",
   ];
 
   const applyQuickPrompt = useCallback((template: string) => {
@@ -288,7 +303,7 @@ export default function WorkspacePage() {
 
     setIsAgentRunning(true);
     setAgentSteps([]);
-    setAgentLogs([`> Agent started (${agentMode.toUpperCase()}): "${prompt}"`]);
+    setAgentLogs([`> Agent started (${getModeLabel(agentMode)}): "${prompt}"`]);
     setBottomTab("agent");
 
     const currentPrompt = prompt;
@@ -341,7 +356,7 @@ export default function WorkspacePage() {
             }
 
             if (event.type === "meta") {
-              const modeLabel = event.mode === "turbo" ? "Turbo" : "Standard";
+              const modeLabel = getModeLabel(event.mode);
               const modelLabel = event.model ? ` · ${event.model}` : "";
               setAgentLogs(prev => [...prev, `> Mode: ${modeLabel}${modelLabel}`]);
             }
@@ -364,7 +379,7 @@ export default function WorkspacePage() {
               }
 
               if (event.result.model) {
-                const modeLabel = event.result.mode === "turbo" ? "Turbo" : "Standard";
+                const modeLabel = getModeLabel(event.result.mode);
                 setAgentLogs(prev => [...prev, `Model used: ${event.result!.model} (${modeLabel})`]);
               }
             }
@@ -375,7 +390,7 @@ export default function WorkspacePage() {
             }
 
             if (event.type === "done") {
-              const modeLabel = event.mode === "turbo" ? "Turbo" : event.mode === "standard" ? "Standard" : currentMode === "turbo" ? "Turbo" : "Standard";
+              const modeLabel = getModeLabel(event.mode ?? currentMode);
               setAgentLogs(prev => [...prev, `> Agent finished (${modeLabel})`]);
             }
           } catch {}
@@ -542,10 +557,10 @@ export default function WorkspacePage() {
           <Badge variant="outline" className="text-[10px]">{project.appType}</Badge>
           <Badge
             variant="outline"
-            className={`text-[10px] gap-1 ${agentMode === "turbo" ? "border-violet-500/40 text-violet-300" : ""}`}
+            className={`text-[10px] gap-1 ${getModePillClass(agentMode)}`}
           >
             <Zap className="w-3 h-3" />
-            {agentMode === "turbo" ? "Turbo" : "Standard"}
+            {getModeLabel(agentMode)}
           </Badge>
         </div>
         <div className="flex items-center gap-1">
@@ -674,9 +689,9 @@ export default function WorkspacePage() {
                             </div>
                             <Badge
                               variant="outline"
-                              className={agentMode === "turbo" ? "border-violet-500/40 text-violet-300" : "border-border/60 text-muted-foreground"}
+                              className={getModePillClass(agentMode)}
                             >
-                              {agentMode === "turbo" ? "Turbo" : "Standard"}
+                              {getModeLabel(agentMode)}
                             </Badge>
                           </div>
                         </div>
@@ -799,13 +814,30 @@ export default function WorkspacePage() {
                           Turbo
                         </span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setAgentMode("turbo-extreme")}
+                        className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                          agentMode === "turbo-extreme"
+                            ? "bg-fuchsia-500/20 text-fuchsia-300"
+                            : "text-muted-foreground hover:text-fuchsia-300"
+                        }`}
+                        disabled={isAgentRunning}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          <Zap className="h-3 w-3" />
+                          Extreme
+                        </span>
+                      </button>
                     </div>
                     <span className={`text-[10px] ${isAgentRunning ? "text-primary" : "text-muted-foreground"}`}>
                       {isAgentRunning
                         ? "Agent arbeitet..."
-                        : agentMode === "turbo"
-                          ? "Turbo: schnelle Iterationen"
-                          : "Standard: maximal gründlich"}
+                        : agentMode === "turbo-extreme"
+                          ? "Turbo Extreme: maximale Geschwindigkeit"
+                          : agentMode === "turbo"
+                            ? "Turbo: schnelle Iterationen"
+                            : "Standard: maximal gründlich"}
                     </span>
                   </div>
 
@@ -819,7 +851,9 @@ export default function WorkspacePage() {
                         placeholder={
                           isAgentRunning
                             ? "Agent working..."
-                            : agentMode === "turbo"
+                            : agentMode === "turbo-extreme"
+                              ? 'Turbo Extreme: "Baue eine komplette SaaS-Plattform mit Auth, Billing und Admin-Panel"'
+                              : agentMode === "turbo"
                               ? 'Turbo-Modus: "Baue eine komplette Landingpage mit Formular und Dashboard"'
                               : 'Beschreibe dein Ziel... (z. B. "Add a contact form with validation")'
                         }
@@ -831,7 +865,13 @@ export default function WorkspacePage() {
                         size="icon"
                         onClick={runAgent}
                         disabled={!prompt.trim() || isAgentRunning}
-                        className={agentMode === "turbo" ? "bg-violet-600 hover:bg-violet-500 text-white" : ""}
+                        className={
+                          agentMode === "turbo-extreme"
+                            ? "bg-fuchsia-600 hover:bg-fuchsia-500 text-white"
+                            : agentMode === "turbo"
+                              ? "bg-violet-600 hover:bg-violet-500 text-white"
+                              : ""
+                        }
                         data-testid="button-send-agent"
                       >
                         {isAgentRunning ? (
