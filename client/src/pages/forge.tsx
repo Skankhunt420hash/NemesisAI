@@ -414,29 +414,44 @@ export default function ForgePage() {
 
       const decoder = new TextDecoder();
       let code = "";
+      let buffer = "";
+
+      const processSseLine = (line: string) => {
+        if (!line.startsWith("data: ")) return;
+        const payload = line.slice(6).trim();
+        if (!payload) return;
+
+        try {
+          const data = JSON.parse(payload);
+          if (data.content) {
+            code += data.content;
+            setGeneratedCode(code);
+          }
+          if (data.error) {
+            throw new Error(data.error);
+          }
+        } catch (e) {
+          if (!(e instanceof SyntaxError)) throw e;
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-        
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.content) {
-                code += data.content;
-                setGeneratedCode(code);
-              }
-              if (data.error) {
-                throw new Error(data.error);
-              }
-            } catch (e) {
-              if (!(e instanceof SyntaxError)) throw e;
-            }
+        if (done) {
+          buffer += decoder.decode();
+          const remainingLines = buffer.split("\n");
+          for (const line of remainingLines) {
+            processSseLine(line);
           }
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          processSseLine(line);
         }
       }
 
