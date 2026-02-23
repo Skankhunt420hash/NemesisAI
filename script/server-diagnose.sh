@@ -17,6 +17,9 @@ echo
 echo "[3] Local health check"
 curl -sS -i http://localhost:5000/api/health || true
 echo
+echo "[3b] Local readiness check"
+curl -sS -i http://localhost:5000/api/ready || true
+echo
 
 if [ -n "$DOMAIN" ]; then
   echo "[4] Domain health check: $DOMAIN"
