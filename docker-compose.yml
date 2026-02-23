@@ -23,6 +23,8 @@ services:
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - APP_DOMAIN=${APP_DOMAIN:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-}
+      - AUTO_DB_PUSH=${AUTO_DB_PUSH:-true}
     depends_on:
       db:
         condition: service_healthy

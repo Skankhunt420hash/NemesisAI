@@ -235,6 +235,9 @@ export async function registerRoutes(
 
   const isProduction = process.env.NODE_ENV === "production";
   const forceInsecureCookies = process.env.COOKIE_SECURE === "false";
+  const appDomain = (process.env.APP_DOMAIN || "").trim();
+  const hasConfiguredDomain = appDomain.length > 0 && appDomain !== "localhost";
+  const useSecureCookies = isProduction && !forceInsecureCookies && hasConfiguredDomain;
   const databaseUrl = process.env.DATABASE_URL;
 
   let sessionStore: session.Store;
@@ -260,8 +263,9 @@ export async function registerRoutes(
       saveUninitialized: false,
       store: sessionStore,
       cookie: {
-        // Allow HTTP cookie testing behind raw IP when explicitly configured.
-        secure: isProduction && !forceInsecureCookies,
+        // Use secure cookies only when running in production with a configured domain.
+        // This keeps IP-based HTTP testing working without manual env tweaking.
+        secure: useSecureCookies,
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000,
       },
@@ -2045,8 +2049,14 @@ CRITICAL RULES:
       checks.warnings.push("SESSION_SECRET not set: using fallback secret (not secure for production)");
     }
 
+    checks.env.APP_DOMAIN = hasConfiguredDomain;
+
     if (isProduction && forceInsecureCookies) {
       checks.warnings.push("COOKIE_SECURE=false: secure cookies are disabled for HTTP access");
+    } else if (isProduction && !hasConfiguredDomain) {
+      checks.warnings.push("APP_DOMAIN not set: secure session cookies are disabled for direct IP/HTTP usage");
+    } else if (isProduction && useSecureCookies) {
+      checks.warnings.push("Secure session cookies enabled (HTTPS/domain mode)");
     }
 
     const ready = checks.db && checks.schema && checks.errors.length === 0;
