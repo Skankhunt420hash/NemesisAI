@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { spawn } from "node:child_process";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import session from "express-session";
@@ -49,6 +50,114 @@ function getOpenAIClient() {
 
 function apiError(res: Response, status: number, code: string, message: string, action?: string) {
   return res.status(status).json({ error: message, code, action });
+}
+
+const REQUIRED_APP_TABLES = [
+  "users",
+  "generated_apps",
+  "project_messages",
+  "password_reset_tokens",
+  "releases",
+  "conversations",
+  "messages",
+] as const;
+
+async function getMissingAppTables(): Promise<string[]> {
+  const result = await db.execute(sql`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+  `);
+
+  const existingTables = new Set(
+    result.rows.map((row: any) => String(row.table_name))
+  );
+
+  return REQUIRED_APP_TABLES.filter((tableName) => !existingTables.has(tableName));
+}
+
+async function runDrizzlePush(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("npx", ["drizzle-kit", "push", "--force"], {
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let output = "";
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, 90_000);
+
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error("drizzle-kit push timed out after 90 seconds"));
+        return;
+      }
+      if (code === 0) {
+        if (output.trim()) {
+          console.log(`[db] drizzle-kit push output:\n${output.trim()}`);
+        }
+        resolve();
+        return;
+      }
+      reject(new Error(`drizzle-kit push failed with code ${code}: ${output.trim()}`));
+    });
+  });
+}
+
+async function ensureDatabaseSchemaReady(): Promise<void> {
+  if (!process.env.DATABASE_URL) return;
+
+  let missingTables: string[] = [];
+  try {
+    missingTables = await getMissingAppTables();
+  } catch (error: any) {
+    console.warn(`[db] Skipping schema check (database not reachable yet): ${error.message}`);
+    return;
+  }
+
+  if (missingTables.length === 0) {
+    return;
+  }
+
+  if (process.env.AUTO_DB_PUSH === "false") {
+    console.warn(`[db] Missing tables detected (${missingTables.join(", ")}), AUTO_DB_PUSH=false so no automatic schema push is performed.`);
+    return;
+  }
+
+  console.warn(`[db] Missing tables detected (${missingTables.join(", ")}). Running automatic drizzle schema push...`);
+  try {
+    await runDrizzlePush();
+  } catch (error: any) {
+    console.error(`[db] Automatic schema push failed: ${error.message}`);
+    return;
+  }
+
+  try {
+    const remainingMissingTables = await getMissingAppTables();
+    if (remainingMissingTables.length > 0) {
+      console.error(`[db] Schema push completed but tables are still missing: ${remainingMissingTables.join(", ")}`);
+    } else {
+      console.log("[db] Schema verified: all required NemesisAI tables are present.");
+    }
+  } catch (error: any) {
+    console.error(`[db] Unable to verify schema after push: ${error.message}`);
+  }
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -159,6 +268,7 @@ export async function registerRoutes(
     })
   );
 
+  await ensureDatabaseSchemaReady();
   await registerOptionalIntegrations(app);
 
   app.post("/api/auth/register", async (req, res) => {
@@ -1796,6 +1906,18 @@ CRITICAL RULES:
       }
     })();
 
+    checks.schema = await (async () => {
+      try {
+        const missingTables = await getMissingAppTables();
+        if (missingTables.length === 0) {
+          return { status: "ok" as const, message: "Database schema is complete" };
+        }
+        return { status: "error" as const, message: `Missing tables: ${missingTables.join(", ")}` };
+      } catch (err: any) {
+        return { status: "error" as const, message: `Schema check failed: ${err.message}` };
+      }
+    })();
+
     checks.openai = (() => {
       const key = process.env.OPENAI_API_KEY;
       if (key) return { status: "ok" as const, message: "API key configured" };
@@ -1874,8 +1996,17 @@ CRITICAL RULES:
   });
 
   app.get("/api/ready", async (_req, res) => {
-    const checks: { db: boolean; env: Record<string, boolean>; errors: string[]; warnings: string[] } = {
+    const checks: {
+      db: boolean;
+      schema: boolean;
+      missingTables: string[];
+      env: Record<string, boolean>;
+      errors: string[];
+      warnings: string[];
+    } = {
       db: false,
+      schema: false,
+      missingTables: [],
       env: {},
       errors: [],
       warnings: [],
@@ -1886,6 +2017,18 @@ CRITICAL RULES:
       checks.db = true;
     } catch (err: any) {
       checks.errors.push(`Database unreachable: ${err.message || "connection failed"}`);
+    }
+
+    if (checks.db) {
+      try {
+        checks.missingTables = await getMissingAppTables();
+        checks.schema = checks.missingTables.length === 0;
+        if (!checks.schema) {
+          checks.errors.push(`Database schema incomplete. Missing tables: ${checks.missingTables.join(", ")}`);
+        }
+      } catch (err: any) {
+        checks.errors.push(`Schema check failed: ${err.message || "unknown error"}`);
+      }
     }
 
     const requiredEnvVars = ["DATABASE_URL"];
@@ -1906,14 +2049,16 @@ CRITICAL RULES:
       checks.warnings.push("COOKIE_SECURE=false: secure cookies are disabled for HTTP access");
     }
 
-    const ready = checks.db && checks.errors.length === 0;
+    const ready = checks.db && checks.schema && checks.errors.length === 0;
     res.status(ready ? 200 : 503).json({
       status: ready ? "ready" : "not_ready",
       version: process.env.APP_VERSION || "1.0.0",
       checks: {
         database: checks.db ? "connected" : "disconnected",
+        schema: checks.schema ? "ok" : "missing_tables",
         environment: checks.env,
       },
+      missingTables: checks.missingTables,
       errors: checks.errors,
       warnings: checks.warnings,
       timestamp: new Date().toISOString(),
