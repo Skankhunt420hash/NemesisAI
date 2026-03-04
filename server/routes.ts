@@ -52,6 +52,11 @@ function apiError(res: Response, status: number, code: string, message: string, 
   return res.status(status).json({ error: message, code, action });
 }
 
+function isOpenAccessMode(): boolean {
+  const raw = (process.env.SELF_HOST_OPEN_ACCESS ?? "true").toLowerCase().trim();
+  return raw !== "false" && raw !== "0" && raw !== "no" && raw !== "off";
+}
+
 const REQUIRED_APP_TABLES = [
   "users",
   "generated_apps",
@@ -170,6 +175,9 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 async function requirePro(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return apiError(res, 401, "AUTH_REQUIRED", "Please log in to continue.", "redirect:/login");
+  }
+  if (isOpenAccessMode()) {
+    return next();
   }
   const user = await storage.getUser(req.session.userId);
   if (user?.isAdmin) {
@@ -2050,6 +2058,10 @@ CRITICAL RULES:
     }
 
     checks.env.APP_DOMAIN = hasConfiguredDomain;
+    checks.env.SELF_HOST_OPEN_ACCESS = isOpenAccessMode();
+    if (isOpenAccessMode()) {
+      checks.warnings.push("SELF_HOST_OPEN_ACCESS enabled: Pro features are unlocked for logged-in users");
+    }
 
     if (isProduction && forceInsecureCookies) {
       checks.warnings.push("COOKIE_SECURE=false: secure cookies are disabled for HTTP access");

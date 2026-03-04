@@ -26,6 +26,7 @@ POSTGRES_DB=nemesisai
 # STRIPE_WEBHOOK_SECRET=
 # SUPERADMIN_EMAILS=admin@example.com
 # PREMIUM_EMAILS=premium@example.com
+# SELF_HOST_OPEN_ACCESS=true
 ENVFILE
   fi
   echo ""

@@ -37,6 +37,7 @@ const envChecks: EnvCheck[] = [
   { key: "OPENAI_API_KEY", label: "OpenAI API Key", required: false, icon: Zap, hint: "Required for AI code generation" },
   { key: "STRIPE_SECRET_KEY", label: "Stripe Secret Key", required: false, icon: Key, hint: "Required for payment processing" },
   { key: "APP_DOMAIN", label: "App Domain", required: false, icon: Globe, hint: "Your domain (e.g., nemesis.example.com)" },
+  { key: "SELF_HOST_OPEN_ACCESS", label: "Self-Host Open Access", required: false, icon: Settings, hint: "Unlocks Pro features for all logged-in users" },
 ];
 
 export default function SetupPage() {
@@ -74,7 +75,7 @@ export default function SetupPage() {
 
   const getEnvStatus = (key: string) => {
     if (!readyData) return "unknown";
-    if (key === "DATABASE_URL" || key === "SESSION_SECRET" || key === "APP_DOMAIN") {
+    if (key === "DATABASE_URL" || key === "SESSION_SECRET" || key === "APP_DOMAIN" || key === "SELF_HOST_OPEN_ACCESS") {
       return readyData.checks?.environment?.[key] ? "ok" : "missing";
     }
     if (diagData?.checks) {
