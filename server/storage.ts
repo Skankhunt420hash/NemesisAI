@@ -9,6 +9,11 @@ function isAdminEmail(email: string): boolean {
   return adminEmails.includes(email.toLowerCase().trim());
 }
 
+function isOpenAccessMode(): boolean {
+  const raw = (process.env.SELF_HOST_OPEN_ACCESS ?? "true").toLowerCase().trim();
+  return raw !== "false" && raw !== "0" && raw !== "no" && raw !== "off";
+}
+
 function isPremiumEmail(email: string): boolean {
   const premiumEmails = (process.env.PREMIUM_EMAILS || "").toLowerCase().split(",").map(e => e.trim()).filter(Boolean);
   return premiumEmails.includes(email.toLowerCase().trim());
@@ -67,8 +72,9 @@ class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const hashedPassword = await this.hashPassword(insertUser.password);
     const email = insertUser.email.toLowerCase().trim();
+    const openAccess = isOpenAccessMode();
     const admin = isAdminEmail(email);
-    const premium = isPremiumEmail(email);
+    const premium = openAccess || isPremiumEmail(email);
     const [user] = await db.insert(users).values({
       ...insertUser,
       email,
@@ -214,8 +220,9 @@ class DatabaseStorage implements IStorage {
   }
 
   async syncUserRoles(userId: number, email: string): Promise<User | undefined> {
+    const openAccess = isOpenAccessMode();
     const admin = isAdminEmail(email);
-    const premium = isPremiumEmail(email);
+    const premium = openAccess || isPremiumEmail(email);
     const [user] = await db.update(users)
       .set({ isAdmin: admin, isPro: admin || premium })
       .where(eq(users.id, userId))

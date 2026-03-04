@@ -1,4 +1,4 @@
-import { getStripeSync, getUncachableStripeClient } from './stripeClient';
+import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import Stripe from 'stripe';
 
@@ -12,9 +12,6 @@ export class WebhookHandlers {
         'FIX: Ensure webhook route is registered BEFORE app.use(express.json()).'
       );
     }
-
-    const sync = await getStripeSync();
-    await sync.processWebhook(payload, signature);
 
     const stripe = await getUncachableStripeClient();
     const event = stripe.webhooks.constructEvent(

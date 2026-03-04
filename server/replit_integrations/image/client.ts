@@ -3,13 +3,13 @@ import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
 
 export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: process.env.OPENAI_BASE_URL,
 });
 
 /**
  * Generate an image and return as Buffer.
- * Uses gpt-image-1 model via Replit AI Integrations.
+ * Uses gpt-image-1 model via direct OpenAI API integration.
  */
 export async function generateImageBuffer(
   prompt: string,
@@ -20,13 +20,16 @@ export async function generateImageBuffer(
     prompt,
     size,
   });
-  const base64 = response.data[0]?.b64_json ?? "";
+  const base64 = response.data?.[0]?.b64_json;
+  if (!base64) {
+    throw new Error("Image generation returned no image data");
+  }
   return Buffer.from(base64, "base64");
 }
 
 /**
  * Edit/combine multiple images into a composite.
- * Uses gpt-image-1 model via Replit AI Integrations.
+ * Uses gpt-image-1 model via direct OpenAI API integration.
  */
 export async function editImages(
   imageFiles: string[],
@@ -47,7 +50,10 @@ export async function editImages(
     prompt,
   });
 
-  const imageBase64 = response.data[0]?.b64_json ?? "";
+  const imageBase64 = response.data?.[0]?.b64_json;
+  if (!imageBase64) {
+    throw new Error("Image edit returned no image data");
+  }
   const imageBytes = Buffer.from(imageBase64, "base64");
 
   if (outputPath) {

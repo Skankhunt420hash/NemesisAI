@@ -36,7 +36,8 @@ const envChecks: EnvCheck[] = [
   { key: "SESSION_SECRET", label: "Session Secret", required: true, icon: Shield, hint: "Random string for session encryption" },
   { key: "OPENAI_API_KEY", label: "OpenAI API Key", required: false, icon: Zap, hint: "Required for AI code generation" },
   { key: "STRIPE_SECRET_KEY", label: "Stripe Secret Key", required: false, icon: Key, hint: "Required for payment processing" },
-  { key: "BASE_URL", label: "Base URL", required: false, icon: Globe, hint: "Your domain URL (e.g., https://nemesis.example.com)" },
+  { key: "APP_DOMAIN", label: "App Domain", required: false, icon: Globe, hint: "Your domain (e.g., nemesis.example.com)" },
+  { key: "SELF_HOST_OPEN_ACCESS", label: "Self-Host Open Access", required: false, icon: Settings, hint: "Unlocks Pro features for all logged-in users" },
 ];
 
 export default function SetupPage() {
@@ -74,7 +75,7 @@ export default function SetupPage() {
 
   const getEnvStatus = (key: string) => {
     if (!readyData) return "unknown";
-    if (key === "DATABASE_URL" || key === "SESSION_SECRET") {
+    if (key === "DATABASE_URL" || key === "SESSION_SECRET" || key === "APP_DOMAIN" || key === "SELF_HOST_OPEN_ACCESS") {
       return readyData.checks?.environment?.[key] ? "ok" : "missing";
     }
     if (diagData?.checks) {
@@ -125,7 +126,7 @@ export default function SetupPage() {
               <Badge variant="outline" className="border-amber-500/30 text-amber-400">Not Ready</Badge>
             )}
             <span className="text-xs text-muted-foreground">
-              Database: {readyData?.checks?.database || "Unknown"} | Version: {readyData?.version || "?"}
+              Database: {readyData?.checks?.database || "Unknown"} | Schema: {readyData?.checks?.schema || "Unknown"} | Version: {readyData?.version || "?"}
             </span>
           </div>
 
@@ -134,6 +135,13 @@ export default function SetupPage() {
               {readyData.errors.map((err: string, i: number) => (
                 <p key={i} className="text-xs text-destructive">{err}</p>
               ))}
+            </div>
+          )}
+
+          {Array.isArray(readyData?.missingTables) && readyData.missingTables.length > 0 && (
+            <div className="bg-amber-500/10 rounded-md p-3 mb-4">
+              <p className="text-xs text-amber-300 font-medium mb-1">Missing DB tables detected:</p>
+              <p className="text-xs text-amber-200">{readyData.missingTables.join(", ")}</p>
             </div>
           )}
         </CardContent>

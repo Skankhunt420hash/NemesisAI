@@ -6,8 +6,8 @@ import * as path from "path";
 import * as os from "os";
 
 const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: process.env.OPENAI_BASE_URL,
 });
 
 async function convertToWav(inputBuffer: Buffer): Promise<Buffer> {

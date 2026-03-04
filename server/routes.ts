@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { spawn } from "node:child_process";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import session from "express-session";
@@ -20,7 +21,7 @@ try {
   const mod = require("./replit_integrations/audio/transcribe");
   transcribeAudio = mod.transcribeAudio;
 } catch {
-  console.log("[info] Replit audio integration not available, transcription will use OpenAI directly");
+  console.log("[info] Optional audio transcoder not available, transcription will use OpenAI directly");
 }
 import { createPatch } from "diff";
 
@@ -34,11 +35,11 @@ declare module "express-session" {
 }
 
 function getOpenAIClient() {
-  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const apiKey = process.env.OPENAI_API_KEY;
+  const baseURL = process.env.OPENAI_BASE_URL;
   
   if (!apiKey) {
-    throw new Error("OpenAI API key not configured. Please set AI_INTEGRATIONS_OPENAI_API_KEY or OPENAI_API_KEY environment variable.");
+    throw new Error("OpenAI API key not configured. Please set OPENAI_API_KEY.");
   }
   
   return new OpenAI({
@@ -51,6 +52,119 @@ function apiError(res: Response, status: number, code: string, message: string, 
   return res.status(status).json({ error: message, code, action });
 }
 
+function isOpenAccessMode(): boolean {
+  const raw = (process.env.SELF_HOST_OPEN_ACCESS ?? "true").toLowerCase().trim();
+  return raw !== "false" && raw !== "0" && raw !== "no" && raw !== "off";
+}
+
+const REQUIRED_APP_TABLES = [
+  "users",
+  "generated_apps",
+  "project_messages",
+  "password_reset_tokens",
+  "releases",
+  "conversations",
+  "messages",
+] as const;
+
+async function getMissingAppTables(): Promise<string[]> {
+  const result = await db.execute(sql`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+  `);
+
+  const existingTables = new Set(
+    result.rows.map((row: any) => String(row.table_name))
+  );
+
+  return REQUIRED_APP_TABLES.filter((tableName) => !existingTables.has(tableName));
+}
+
+async function runDrizzlePush(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("npx", ["drizzle-kit", "push", "--force"], {
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let output = "";
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, 90_000);
+
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error("drizzle-kit push timed out after 90 seconds"));
+        return;
+      }
+      if (code === 0) {
+        if (output.trim()) {
+          console.log(`[db] drizzle-kit push output:\n${output.trim()}`);
+        }
+        resolve();
+        return;
+      }
+      reject(new Error(`drizzle-kit push failed with code ${code}: ${output.trim()}`));
+    });
+  });
+}
+
+async function ensureDatabaseSchemaReady(): Promise<void> {
+  if (!process.env.DATABASE_URL) return;
+
+  let missingTables: string[] = [];
+  try {
+    missingTables = await getMissingAppTables();
+  } catch (error: any) {
+    console.warn(`[db] Skipping schema check (database not reachable yet): ${error.message}`);
+    return;
+  }
+
+  if (missingTables.length === 0) {
+    return;
+  }
+
+  if (process.env.AUTO_DB_PUSH === "false") {
+    console.warn(`[db] Missing tables detected (${missingTables.join(", ")}), AUTO_DB_PUSH=false so no automatic schema push is performed.`);
+    return;
+  }
+
+  console.warn(`[db] Missing tables detected (${missingTables.join(", ")}). Running automatic drizzle schema push...`);
+  try {
+    await runDrizzlePush();
+  } catch (error: any) {
+    console.error(`[db] Automatic schema push failed: ${error.message}`);
+    return;
+  }
+
+  try {
+    const remainingMissingTables = await getMissingAppTables();
+    if (remainingMissingTables.length > 0) {
+      console.error(`[db] Schema push completed but tables are still missing: ${remainingMissingTables.join(", ")}`);
+    } else {
+      console.log("[db] Schema verified: all required NemesisAI tables are present.");
+    }
+  } catch (error: any) {
+    console.error(`[db] Unable to verify schema after push: ${error.message}`);
+  }
+}
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return apiError(res, 401, "AUTH_REQUIRED", "Please log in to continue.", "redirect:/login");
@@ -61,6 +175,9 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 async function requirePro(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return apiError(res, 401, "AUTH_REQUIRED", "Please log in to continue.", "redirect:/login");
+  }
+  if (isOpenAccessMode()) {
+    return next();
   }
   const user = await storage.getUser(req.session.userId);
   if (user?.isAdmin) {
@@ -83,6 +200,38 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+async function registerOptionalIntegrations(app: Express): Promise<void> {
+  const hasOpenAIKey = Boolean(process.env.OPENAI_API_KEY);
+  if (!hasOpenAIKey) {
+    console.log("[integrations] OpenAI key missing, skipping optional integration routes");
+    return;
+  }
+
+  try {
+    const { registerAudioRoutes } = await import("./replit_integrations/audio");
+    registerAudioRoutes(app);
+    console.log("[integrations] Audio routes enabled");
+  } catch (error) {
+    console.warn("[integrations] Failed to register audio routes:", error);
+  }
+
+  try {
+    const { registerChatRoutes } = await import("./replit_integrations/chat");
+    registerChatRoutes(app);
+    console.log("[integrations] Chat routes enabled");
+  } catch (error) {
+    console.warn("[integrations] Failed to register chat routes:", error);
+  }
+
+  try {
+    const { registerImageRoutes } = await import("./replit_integrations/image");
+    registerImageRoutes(app);
+    console.log("[integrations] Image routes enabled");
+  } catch (error) {
+    console.warn("[integrations] Failed to register image routes:", error);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -93,6 +242,10 @@ export async function registerRoutes(
   }
 
   const isProduction = process.env.NODE_ENV === "production";
+  const forceInsecureCookies = process.env.COOKIE_SECURE === "false";
+  const appDomain = (process.env.APP_DOMAIN || "").trim();
+  const hasConfiguredDomain = appDomain.length > 0 && appDomain !== "localhost";
+  const useSecureCookies = isProduction && !forceInsecureCookies && hasConfiguredDomain;
   const databaseUrl = process.env.DATABASE_URL;
 
   let sessionStore: session.Store;
@@ -118,12 +271,17 @@ export async function registerRoutes(
       saveUninitialized: false,
       store: sessionStore,
       cookie: {
-        secure: isProduction,
+        // Use secure cookies only when running in production with a configured domain.
+        // This keeps IP-based HTTP testing working without manual env tweaking.
+        secure: useSecureCookies,
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000,
       },
     })
   );
+
+  await ensureDatabaseSchemaReady();
+  await registerOptionalIntegrations(app);
 
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -304,11 +462,11 @@ export async function registerRoutes(
       if (transcribeAudio) {
         text = await transcribeAudio(req.file.buffer);
       } else {
-        const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+        const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) {
           return res.status(503).json({ error: "Transcription not available - OpenAI key not configured" });
         }
-        const openai = new OpenAI({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+        const openai = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL });
         const file = new File([req.file.buffer], "audio.webm", { type: req.file.mimetype });
         const result = await openai.audio.transcriptions.create({
           file,
@@ -394,28 +552,33 @@ Rules:
     }
   });
 
-  app.post("/api/checkout", requireAuth, async (req, res) => {
+  const getOrCreateStripeCustomerId = async (userId: number): Promise<string> => {
+    const user = await storage.getUser(userId);
+    if (!user) {
+      throw new Error("USER_NOT_FOUND");
+    }
+    if (user.stripeCustomerId) {
+      return user.stripeCustomerId;
+    }
+
+    const stripe = await getUncachableStripeClient();
+    const customer = await stripe.customers.create({
+      email: user.email,
+      metadata: { userId: String(user.id) },
+    });
+    await storage.updateUser(user.id, { stripeCustomerId: customer.id });
+    return customer.id;
+  };
+
+  const createCheckoutSession = async (req: Request, res: Response) => {
     try {
       if (!isStripeConfigured()) {
         return res.status(503).json({ error: "Payment processing is not configured", code: "STRIPE_NOT_CONFIGURED" });
       }
 
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) {
-        return res.status(401).json({ error: "User not found" });
-      }
-
       const stripe = await getUncachableStripeClient();
-
-      let customerId = user.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          metadata: { userId: String(user.id) },
-        });
-        await storage.updateUser(user.id, { stripeCustomerId: customer.id });
-        customerId = customer.id;
-      }
+      const customerId = await getOrCreateStripeCustomerId(req.session.userId!);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
 
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -435,16 +598,53 @@ Rules:
           },
         ],
         mode: "subscription",
-        success_url: `${req.protocol}://${req.get("host")}/forge?success=true`,
-        cancel_url: `${req.protocol}://${req.get("host")}/pricing?canceled=true`,
+        success_url: `${baseUrl}/forge?success=true`,
+        cancel_url: `${baseUrl}/pricing?canceled=true`,
       });
+
+      if (!session.url) {
+        return res.status(500).json({ error: "Stripe did not return a checkout URL" });
+      }
 
       res.json({ url: session.url });
     } catch (err) {
+      if (err instanceof Error && err.message === "USER_NOT_FOUND") {
+        return res.status(401).json({ error: "User not found" });
+      }
       console.error("Checkout error:", err);
       res.status(500).json({ error: "Failed to create checkout session" });
     }
-  });
+  };
+
+  const createPortalSession = async (req: Request, res: Response) => {
+    try {
+      if (!isStripeConfigured()) {
+        return res.status(503).json({ error: "Payment processing is not configured", code: "STRIPE_NOT_CONFIGURED" });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const customerId = await getOrCreateStripeCustomerId(req.session.userId!);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+      const portal = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${baseUrl}/billing`,
+      });
+
+      res.json({ url: portal.url });
+    } catch (err) {
+      if (err instanceof Error && err.message === "USER_NOT_FOUND") {
+        return res.status(401).json({ error: "User not found" });
+      }
+      console.error("Billing portal error:", err);
+      res.status(500).json({ error: "Failed to create billing portal session" });
+    }
+  };
+
+  app.post("/api/checkout", requireAuth, createCheckoutSession);
+  app.post("/api/create-checkout-session", requireAuth, createCheckoutSession);
+  app.post("/api/billing/portal", requireAuth, createPortalSession);
+  app.post("/api/create-portal-session", requireAuth, createPortalSession);
 
   app.patch("/api/apps/:id", requireAuth, async (req, res) => {
     try {
@@ -569,7 +769,14 @@ expo build:ios
 \`\`\`
 `, { name: "README.md" });
 
-      archive.append("", { name: "assets/.gitkeep" });
+      const placeholderPng = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+KV4sAAAAASUVORK5CYII=",
+        "base64"
+      );
+      archive.append(placeholderPng, { name: "assets/icon.png" });
+      archive.append(placeholderPng, { name: "assets/splash.png" });
+      archive.append(placeholderPng, { name: "assets/adaptive-icon.png" });
+      archive.append(placeholderPng, { name: "assets/favicon.png" });
 
       await archive.finalize();
     } catch (err) {
@@ -652,10 +859,29 @@ expo build:ios
         return res.status(400).json({ error: "Invalid project ID" });
       }
 
-      const { prompt } = req.body;
+      const { prompt, mode } = req.body as { prompt?: string; mode?: string };
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
       }
+
+      const generationMode = mode === "turbo-extreme"
+        ? "turbo-extreme"
+        : mode === "turbo"
+          ? "turbo"
+          : "standard";
+      const isTurboMode = generationMode !== "standard";
+      const isTurboExtreme = generationMode === "turbo-extreme";
+      const generationModel = generationMode === "standard" ? "gpt-5.2" : "gpt-4.1";
+      const maxCompletionTokens = generationMode === "turbo-extreme"
+        ? 4096
+        : generationMode === "turbo"
+          ? 6144
+          : 8192;
+      const speedDirective = generationMode === "turbo-extreme"
+        ? "Turbo Extreme mode is ON. Deliver the fastest possible, production-usable implementation with minimal latency and no unnecessary verbosity."
+        : generationMode === "turbo"
+          ? "Turbo mode is ON. Prioritize low-latency output and deliver high-value code quickly."
+          : "Standard mode is ON. Prioritize deeper quality checks and completeness.";
 
       const project = await storage.getApp(projectId);
       if (!project || project.userId !== req.session.userId!) {
@@ -716,7 +942,8 @@ Rules:
 - Preserve all existing functionality that wasn't mentioned
 - Output the complete updated code (not just the changes)
 - Keep the code clean and production-ready
-- Do not add explanations, just output code`
+- Do not add explanations, just output code
+- ${speedDirective}`
         : `You are an expert software developer creating a new ${project.appType} app.
 
 Tech Stack: ${project.language}
@@ -726,16 +953,24 @@ Rules:
 - Generate clean, production-ready code
 - Use modern best practices
 - Output only code, no explanations
-- Make the code modular and reusable`;
+- Make the code modular and reusable
+- ${speedDirective}`;
+
+      res.write(`data: ${JSON.stringify({
+        mode: generationMode,
+        model: generationModel,
+        turbo: isTurboMode,
+        extreme: isTurboExtreme,
+      })}\n\n`);
 
       const stream = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: generationModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
         ],
         stream: true,
-        max_completion_tokens: 8192,
+        max_completion_tokens: maxCompletionTokens,
       });
 
       let fullCode = "";
@@ -758,10 +993,19 @@ Rules:
       await storage.addProjectMessage({
         projectId,
         role: "assistant",
-        content: "Code updated successfully.",
+        content: isTurboExtreme
+          ? "Code updated successfully in Turbo Extreme mode."
+          : isTurboMode
+            ? "Code updated successfully in Turbo mode."
+            : "Code updated successfully.",
       });
 
-      res.write(`data: ${JSON.stringify({ done: true, projectId })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        done: true,
+        projectId,
+        mode: generationMode,
+        model: generationModel,
+      })}\n\n`);
       res.end();
     } catch (err: any) {
       console.error("Iterate error:", err);
@@ -1437,8 +1681,27 @@ Rules:
       const projectId = parseInt(req.params.id as string);
       if (isNaN(projectId)) return res.status(400).json({ error: "Invalid project ID" });
 
-      const { prompt } = req.body;
+      const { prompt, mode } = req.body as { prompt?: string; mode?: string };
       if (!prompt) return res.status(400).json({ error: "Prompt is required" });
+
+      const agentMode = mode === "turbo-extreme"
+        ? "turbo-extreme"
+        : mode === "turbo"
+          ? "turbo"
+          : "standard";
+      const isTurboMode = agentMode !== "standard";
+      const isTurboExtreme = agentMode === "turbo-extreme";
+      const agentModel = agentMode === "standard" ? "gpt-5.2" : "gpt-4.1";
+      const maxCompletionTokens = agentMode === "turbo-extreme"
+        ? 8192
+        : agentMode === "turbo"
+          ? 12288
+          : 16384;
+      const speedDirective = agentMode === "turbo-extreme"
+        ? "Turbo Extreme mode is ON. Keep the plan ultra-compact, reduce token usage, and optimize for maximum execution speed while preserving correctness."
+        : agentMode === "turbo"
+          ? "Turbo mode is ON. Keep the plan concise, optimize for rapid execution, and avoid unnecessary over-engineering."
+          : "Standard mode is ON. Favor robustness, broader edge-case handling, and more complete architecture decisions.";
 
       const project = await storage.getApp(projectId);
       if (!project || project.userId !== req.session.userId!) {
@@ -1493,7 +1756,7 @@ Rules:
         ? `Current files:\n${Object.entries(currentFiles).map(([path, code]) => `--- ${path} ---\n${code}`).join("\n\n")}`
         : "No files yet. Create the project from scratch.";
 
-      const systemPrompt = `You are NemesisAI Agent, an expert software developer. You work like Cursor/Replit - you receive instructions and produce complete file contents.
+      const systemPrompt = `You are NemesisAI Agent, an expert software developer. You work like a modern coding agent - you receive instructions and produce complete file contents.
 
 Tech Stack: ${project.language}
 ${techContext}
@@ -1515,18 +1778,27 @@ CRITICAL RULES:
 3. Use proper file extensions (.html, .css, .js, .tsx, .json etc.)
 4. For web apps, the entry file should be index.html
 5. Keep code clean, modern, and production-ready
-6. Output ONLY the JSON object, no markdown fences, no explanations outside the JSON`;
+6. Output ONLY the JSON object, no markdown fences, no explanations outside the JSON
+7. ${speedDirective}`;
+
+      res.write(`data: ${JSON.stringify({
+        type: "meta",
+        mode: agentMode,
+        model: agentModel,
+        turbo: isTurboMode,
+        extreme: isTurboExtreme,
+      })}\n\n`);
 
       res.write(`data: ${JSON.stringify({ type: "step", step: { id: "1", type: "plan", description: "Analyzing your request...", status: "running" } })}\n\n`);
 
       const stream = await openai.chat.completions.create({
-        model: "gpt-4.1",
+        model: agentModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
         ],
         stream: true,
-        max_completion_tokens: 16384,
+        max_completion_tokens: maxCompletionTokens,
       });
 
       let fullResponse = "";
@@ -1591,6 +1863,8 @@ CRITICAL RULES:
         content: agentResult.summary,
         messageType: "agent",
         metadata: JSON.stringify({
+          mode: agentMode,
+          model: agentModel,
           steps: agentResult.steps,
           diffs: Object.keys(diffs),
           fileCount: Object.keys(agentResult.files).length,
@@ -1607,10 +1881,17 @@ CRITICAL RULES:
           entryFile: agentResult.entryFile,
           diffs,
           summary: agentResult.summary,
+          mode: agentMode,
+          model: agentModel,
         }
       })}\n\n`);
 
-      res.write(`data: ${JSON.stringify({ type: "done", projectId })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        type: "done",
+        projectId,
+        mode: agentMode,
+        model: agentModel,
+      })}\n\n`);
       res.end();
     } catch (err: any) {
       console.error("Agent error:", err);
@@ -1637,8 +1918,20 @@ CRITICAL RULES:
       }
     })();
 
+    checks.schema = await (async () => {
+      try {
+        const missingTables = await getMissingAppTables();
+        if (missingTables.length === 0) {
+          return { status: "ok" as const, message: "Database schema is complete" };
+        }
+        return { status: "error" as const, message: `Missing tables: ${missingTables.join(", ")}` };
+      } catch (err: any) {
+        return { status: "error" as const, message: `Schema check failed: ${err.message}` };
+      }
+    })();
+
     checks.openai = (() => {
-      const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const key = process.env.OPENAI_API_KEY;
       if (key) return { status: "ok" as const, message: "API key configured" };
       return { status: "error" as const, message: "No OpenAI API key found" };
     })();
@@ -1715,10 +2008,20 @@ CRITICAL RULES:
   });
 
   app.get("/api/ready", async (_req, res) => {
-    const checks: { db: boolean; env: Record<string, boolean>; errors: string[] } = {
+    const checks: {
+      db: boolean;
+      schema: boolean;
+      missingTables: string[];
+      env: Record<string, boolean>;
+      errors: string[];
+      warnings: string[];
+    } = {
       db: false,
+      schema: false,
+      missingTables: [],
       env: {},
       errors: [],
+      warnings: [],
     };
 
     try {
@@ -1728,7 +2031,19 @@ CRITICAL RULES:
       checks.errors.push(`Database unreachable: ${err.message || "connection failed"}`);
     }
 
-    const requiredEnvVars = ["DATABASE_URL", "SESSION_SECRET"];
+    if (checks.db) {
+      try {
+        checks.missingTables = await getMissingAppTables();
+        checks.schema = checks.missingTables.length === 0;
+        if (!checks.schema) {
+          checks.errors.push(`Database schema incomplete. Missing tables: ${checks.missingTables.join(", ")}`);
+        }
+      } catch (err: any) {
+        checks.errors.push(`Schema check failed: ${err.message || "unknown error"}`);
+      }
+    }
+
+    const requiredEnvVars = ["DATABASE_URL"];
     for (const key of requiredEnvVars) {
       const exists = !!process.env[key];
       checks.env[key] = exists;
@@ -1737,15 +2052,37 @@ CRITICAL RULES:
       }
     }
 
-    const ready = checks.db && checks.errors.length === 0;
+    checks.env.SESSION_SECRET = !!process.env.SESSION_SECRET;
+    if (!checks.env.SESSION_SECRET) {
+      checks.warnings.push("SESSION_SECRET not set: using fallback secret (not secure for production)");
+    }
+
+    checks.env.APP_DOMAIN = hasConfiguredDomain;
+    checks.env.SELF_HOST_OPEN_ACCESS = isOpenAccessMode();
+    if (isOpenAccessMode()) {
+      checks.warnings.push("SELF_HOST_OPEN_ACCESS enabled: Pro features are unlocked for logged-in users");
+    }
+
+    if (isProduction && forceInsecureCookies) {
+      checks.warnings.push("COOKIE_SECURE=false: secure cookies are disabled for HTTP access");
+    } else if (isProduction && !hasConfiguredDomain) {
+      checks.warnings.push("APP_DOMAIN not set: secure session cookies are disabled for direct IP/HTTP usage");
+    } else if (isProduction && useSecureCookies) {
+      checks.warnings.push("Secure session cookies enabled (HTTPS/domain mode)");
+    }
+
+    const ready = checks.db && checks.schema && checks.errors.length === 0;
     res.status(ready ? 200 : 503).json({
       status: ready ? "ready" : "not_ready",
       version: process.env.APP_VERSION || "1.0.0",
       checks: {
         database: checks.db ? "connected" : "disconnected",
+        schema: checks.schema ? "ok" : "missing_tables",
         environment: checks.env,
       },
+      missingTables: checks.missingTables,
       errors: checks.errors,
+      warnings: checks.warnings,
       timestamp: new Date().toISOString(),
     });
   });

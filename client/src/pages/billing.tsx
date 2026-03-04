@@ -28,7 +28,7 @@ export default function BillingPage() {
 
   const handleSubscribe = async () => {
     try {
-      const res = await fetch("/api/create-checkout-session", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
         credentials: "include",
       });
@@ -37,6 +37,9 @@ export default function BillingPage() {
         if (data.url) {
           window.location.href = data.url;
         }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error("Checkout failed:", data.error || res.statusText);
       }
     } catch (err) {
       console.error("Failed to start checkout:", err);
@@ -45,7 +48,7 @@ export default function BillingPage() {
 
   const handleManage = async () => {
     try {
-      const res = await fetch("/api/create-portal-session", {
+      const res = await fetch("/api/billing/portal", {
         method: "POST",
         credentials: "include",
       });
@@ -54,6 +57,9 @@ export default function BillingPage() {
         if (data.url) {
           window.location.href = data.url;
         }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error("Portal session failed:", data.error || res.statusText);
       }
     } catch (err) {
       console.error("Failed to open portal:", err);

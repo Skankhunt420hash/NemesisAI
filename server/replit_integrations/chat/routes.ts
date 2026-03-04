@@ -3,13 +3,27 @@ import OpenAI from "openai";
 import { chatStorage } from "./storage";
 
 const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: process.env.OPENAI_BASE_URL,
 });
+
+const CONVERSATIONS_PATH = "/api/chat/conversations";
+const CONVERSATION_PATH = `${CONVERSATIONS_PATH}/:id`;
+const MESSAGES_PATH = `${CONVERSATION_PATH}/messages`;
+
+function parseConversationId(param: string | string[] | undefined): number | null {
+  const value = Array.isArray(param) ? param[0] : param;
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
 export function registerChatRoutes(app: Express): void {
   // Get all conversations
-  app.get("/api/conversations", async (req: Request, res: Response) => {
+  app.get(CONVERSATIONS_PATH, async (req: Request, res: Response) => {
     try {
       const conversations = await chatStorage.getAllConversations();
       res.json(conversations);
@@ -20,9 +34,12 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Get single conversation with messages
-  app.get("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.get(CONVERSATION_PATH, async (req: Request, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseConversationId(req.params.id);
+      if (id === null) {
+        return res.status(400).json({ error: "Invalid conversation id" });
+      }
       const conversation = await chatStorage.getConversation(id);
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
@@ -36,7 +53,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Create new conversation
-  app.post("/api/conversations", async (req: Request, res: Response) => {
+  app.post(CONVERSATIONS_PATH, async (req: Request, res: Response) => {
     try {
       const { title } = req.body;
       const conversation = await chatStorage.createConversation(title || "New Chat");
@@ -48,9 +65,12 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Delete conversation
-  app.delete("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.delete(CONVERSATION_PATH, async (req: Request, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseConversationId(req.params.id);
+      if (id === null) {
+        return res.status(400).json({ error: "Invalid conversation id" });
+      }
       await chatStorage.deleteConversation(id);
       res.status(204).send();
     } catch (error) {
@@ -60,9 +80,12 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Send message and get AI response (streaming)
-  app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
+  app.post(MESSAGES_PATH, async (req: Request, res: Response) => {
     try {
-      const conversationId = parseInt(req.params.id);
+      const conversationId = parseConversationId(req.params.id);
+      if (conversationId === null) {
+        return res.status(400).json({ error: "Invalid conversation id" });
+      }
       const { content } = req.body;
 
       // Save user message

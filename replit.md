@@ -25,7 +25,7 @@ Preferred communication style: Simple, everyday language.
 - **API Pattern**: RESTful JSON API endpoints
 - **Session Management**: express-session with PostgreSQL store
 - **Authentication**: Session-based with bcrypt hashing; supports public, authenticated, and Pro subscription access levels.
-- **AI Integration**: OpenAI API for code generation, integrated via Replit AI.
+- **AI Integration**: OpenAI API for code generation and transcription (direct API integration).
 - **Core Workflow**: Iterative App Factory for persistent project sessions, incremental code updates via Server-Sent Events (SSE), and AI-driven code modification based on user prompts.
 - **Admin System**: Admin bypass for Pro features, `requireAdmin` middleware.
 - **Error Handling**: Standardized structured errors `{ error, code, action }` with specific codes: `INVALID_CREDENTIALS`, `DB_DOWN`, `DB_NOT_CONFIGURED`, `VALIDATION_ERROR`, `EMAIL_EXISTS`, `SERVER_ERROR`.
@@ -33,6 +33,7 @@ Preferred communication style: Simple, everyday language.
 - **Password Reset**: Secure flow with token-based reset.
 - **Health Endpoints**: `GET /api/health` (basic ok + version), `GET /api/ready` (DB + ENV checks, returns 503 if not ready).
 - **Safe Mode**: Frontend polls `/api/ready` every 30s. If not ready, login/register are disabled with an amber "Safe Mode" banner showing the specific error reason.
+- **HTTP Test Mode**: Set `COOKIE_SECURE=false` to allow session cookies over raw IP HTTP during temporary testing (not for production).
 - **APP_VERSION**: Exposed via health/ready endpoints, displayed in UI footer. Set via Docker build arg from git SHA in deploy.sh.
 - **Preview System**: Backend endpoints for managing preview server status, starting/stopping, auto-fixing, and retrieving logs.
 
@@ -57,27 +58,27 @@ Preferred communication style: Simple, everyday language.
 - **NEMESIS CONFIDENCE SCORE™**: Provides stability, security, UX, and scalability scores.
 
 ### Self-Hosted Deployment
-- **Fully Decoupled from Replit**: All Replit-specific features (audio integration, Stripe connector, Vite plugins) are optional with graceful fallbacks.
-- **Docker Compose**: `docker compose up -d` starts web app + PostgreSQL + nginx (HTTPS reverse proxy).
+- **Fully Self-Hosted**: No Replit runtime/connectors required. Deploy on any Linux server with Docker.
+- **Docker Compose**: `docker compose up -d` starts web app + PostgreSQL + Caddy (automatic HTTPS reverse proxy).
 - **Session Store**: In-memory for development, PostgreSQL (`connect-pg-simple`) for production.
-- **Stripe**: Fully optional. Accepts `STRIPE_SECRET_KEY` env var directly or Replit connector. If neither is set, payment features are disabled gracefully.
-- **OpenAI**: Accepts `OPENAI_API_KEY` or `AI_INTEGRATIONS_OPENAI_API_KEY` (Replit).
-- **Audio Transcription**: Falls back to OpenAI Whisper if Replit audio integration is unavailable.
+- **Stripe**: Fully optional. Uses `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`. If not configured, payment features are disabled gracefully.
+- **OpenAI**: Uses `OPENAI_API_KEY` (optional `OPENAI_BASE_URL` supported).
+- **Audio Transcription**: Falls back to OpenAI Whisper if optional audio tooling is unavailable.
 - **Configuration**: `.env.example` documents all required and optional environment variables.
 - **Deploy Script**: `deploy.sh` handles build, schema push, and readiness checks.
 
 ## External Dependencies
 
 - **AI Services**:
-    - **OpenAI API**: For code generation and audio transcription. Supports direct `OPENAI_API_KEY` or Replit AI integration.
+    - **OpenAI API**: For code generation and audio transcription via direct OpenAI credentials.
 - **Payment Processing (Optional)**:
-    - **Stripe**: For subscription management. Works with `STRIPE_SECRET_KEY` env var or Replit Stripe connector. Disabled if not configured.
+    - **Stripe**: For subscription management via direct `STRIPE_SECRET_KEY` configuration. Disabled if not configured.
 - **Database**:
     - **PostgreSQL**: Primary data store. Auto-configured via docker-compose or set `DATABASE_URL` directly.
-- **Replit Integrations (Optional)**:
-    - Audio transcription, image generation, batch processing, chat helpers - all degrade gracefully when unavailable.
+- **Optional Integrations**:
+    - Audio transcription, image generation, batch processing, chat helpers - all run with direct OpenAI credentials.
 - **Deployment**:
-    - **Self-Hosted**: Docker Compose with web app + PostgreSQL + nginx. Works on any Linux server (DigitalOcean, AWS, etc.).
+    - **Self-Hosted**: Docker Compose with web app + PostgreSQL + Caddy. Works on any Linux server (DigitalOcean, AWS, etc.).
     - **deploy.sh flow**: Build containers → Start DB → Schema push → Start all → Readiness check.
     - **Cache Busting**: Vite production builds use content-hashed filenames by default (`[name]-[hash].js`).
     - **Docker Healthcheck**: Dockerfile includes `HEALTHCHECK` pointing to `/api/health`.

@@ -26,51 +26,15 @@ export function log(message: string, source = "express") {
 
 async function initStripe() {
   if (!isStripeConfigured()) {
-    log('Stripe not configured (no STRIPE_SECRET_KEY or Replit connector), skipping', 'stripe');
+    log('Stripe not configured (STRIPE_SECRET_KEY missing), skipping', 'stripe');
     return;
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    log('DATABASE_URL not set, skipping Stripe initialization', 'stripe');
-    return;
-  }
-
-  try {
-    const { runMigrations } = await import('stripe-replit-sync');
-    const { getStripeSync } = await import('./stripeClient');
-
-    log('Initializing Stripe schema...', 'stripe');
-    await runMigrations({
-      databaseUrl,
-      schema: 'stripe'
-    } as any);
-    log('Stripe schema ready', 'stripe');
-
-    const stripeSync = await getStripeSync();
-
-    log('Setting up managed webhook...', 'stripe');
-    const domains = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.APP_DOMAIN;
-    if (domains) {
-      const webhookBaseUrl = `https://${domains}`;
-      const { webhook } = await stripeSync.findOrCreateManagedWebhook(
-        `${webhookBaseUrl}/api/stripe/webhook`
-      );
-      log(`Webhook configured: ${webhook.url}`, 'stripe');
-    } else {
-      log('No domain configured for webhook (set APP_DOMAIN or REPLIT_DOMAINS)', 'stripe');
-    }
-
-    log('Syncing Stripe data...', 'stripe');
-    stripeSync.syncBackfill()
-      .then(() => {
-        log('Stripe data synced', 'stripe');
-      })
-      .catch((err: any) => {
-        log(`Error syncing Stripe data: ${err.message}`, 'stripe');
-      });
-  } catch (error: any) {
-    log(`Stripe initialization warning: ${error.message}`, 'stripe');
+  const hasWebhookSecret = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  if (!hasWebhookSecret) {
+    log('Stripe is configured, but STRIPE_WEBHOOK_SECRET is missing. Subscription sync via webhook is disabled.', 'stripe');
+  } else {
+    log('Stripe is configured in self-hosted mode. Webhook endpoint: /api/stripe/webhook', 'stripe');
   }
 }
 
@@ -86,6 +50,9 @@ async function initStripe() {
 
         if (!signature) {
           return res.status(400).json({ error: 'Missing stripe-signature' });
+        }
+        if (!process.env.STRIPE_WEBHOOK_SECRET) {
+          return res.status(503).json({ error: 'STRIPE_WEBHOOK_SECRET is not configured' });
         }
 
         try {

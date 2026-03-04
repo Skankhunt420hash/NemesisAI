@@ -26,6 +26,7 @@ POSTGRES_DB=nemesisai
 # STRIPE_WEBHOOK_SECRET=
 # SUPERADMIN_EMAILS=admin@example.com
 # PREMIUM_EMAILS=premium@example.com
+# SELF_HOST_OPEN_ACCESS=true
 ENVFILE
   fi
   echo ""
@@ -61,13 +62,18 @@ echo "Step 5: Wait for readiness..."
 sleep 5
 
 for i in $(seq 1 15); do
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/health 2>/dev/null || echo "000")
+  STATUS=$(curl -s -o /tmp/nemesis-ready.json -w "%{http_code}" http://localhost:5000/api/ready 2>/dev/null || echo "000")
   if [ "$STATUS" = "200" ]; then
     echo "App is ready!"
     break
   fi
   if [ "$i" = "15" ]; then
-    echo "App may still be starting. Check logs: docker compose logs -f app"
+    echo "App is not ready yet. Check logs: docker compose logs -f app"
+    if [ -f /tmp/nemesis-ready.json ]; then
+      echo "Last /api/ready response:"
+      cat /tmp/nemesis-ready.json
+      echo ""
+    fi
   else
     echo "Waiting... ($i/15)"
     sleep 3
@@ -88,7 +94,7 @@ else
 fi
 echo ""
 echo "Commands:"
-echo "  docker compose logs -f app     # View app logs"
+echo "  docker compose logs -f app proxy   # View app/proxy logs"
 echo "  docker compose restart app     # Restart app"
 echo "  docker compose down            # Stop everything"
 echo "  docker compose up -d --build   # Rebuild and start"

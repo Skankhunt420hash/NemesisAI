@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import nemesisAgentAvatar from "@/assets/nemesis-agent.svg";
 import Editor from "@monaco-editor/react";
 import {
   Panel,
@@ -35,6 +36,7 @@ import {
   ExternalLink,
   RefreshCw,
   Sparkles,
+  Zap,
   AlertCircle,
   CheckCircle2,
   Clock,
@@ -47,19 +49,38 @@ import {
 } from "lucide-react";
 import type { GeneratedApp, ProjectMessage, ProjectFiles, AgentStep } from "@shared/schema";
 
+type AgentExecutionMode = "standard" | "turbo" | "turbo-extreme";
+
 interface AgentEvent {
-  type: "step" | "stream" | "result" | "error" | "done";
+  type: "step" | "stream" | "result" | "error" | "done" | "meta";
   step?: AgentStep;
   content?: string;
+  mode?: AgentExecutionMode;
+  model?: string;
+  turbo?: boolean;
   result?: {
     plan: string[];
     files: ProjectFiles;
     entryFile: string;
     diffs: Record<string, string>;
     summary: string;
+    mode?: AgentExecutionMode;
+    model?: string;
   };
   error?: string;
   projectId?: number;
+}
+
+function getModeLabel(mode?: AgentExecutionMode): string {
+  if (mode === "turbo-extreme") return "Turbo Extreme";
+  if (mode === "turbo") return "Turbo";
+  return "Standard";
+}
+
+function getModePillClass(mode: AgentExecutionMode): string {
+  if (mode === "turbo-extreme") return "border-fuchsia-500/40 text-fuchsia-300";
+  if (mode === "turbo") return "border-violet-500/40 text-violet-300";
+  return "border-border/60 text-muted-foreground";
 }
 
 function getLanguageFromPath(filepath: string): string {
@@ -121,9 +142,10 @@ function StepIndicator({ step }: { step: AgentStep }) {
     preview: Eye,
   };
   const Icon = icons[step.type] || Sparkles;
+  const statusLabel = step.status === "running" ? "running" : step.status === "done" ? "done" : step.status === "error" ? "error" : "pending";
 
   return (
-    <div className="flex items-center gap-2 text-xs py-1">
+    <div className="flex items-center gap-2 rounded-md border border-border/60 bg-black/20 px-2.5 py-1.5 text-xs">
       {step.status === "running" ? (
         <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
       ) : step.status === "done" ? (
@@ -134,9 +156,23 @@ function StepIndicator({ step }: { step: AgentStep }) {
         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
       )}
       <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-      <span className={step.status === "running" ? "text-primary" : "text-muted-foreground"}>
+      <span className={`flex-1 ${step.status === "running" ? "text-primary" : "text-muted-foreground"}`}>
         {step.description}
       </span>
+      <Badge
+        variant="outline"
+        className={`text-[10px] uppercase tracking-wide ${
+          step.status === "done"
+            ? "border-emerald-500/30 text-emerald-300"
+            : step.status === "running"
+              ? "border-primary/40 text-primary"
+              : step.status === "error"
+                ? "border-destructive/40 text-destructive"
+                : "border-border/60 text-muted-foreground"
+        }`}
+      >
+        {statusLabel}
+      </Badge>
     </div>
   );
 }
@@ -153,6 +189,7 @@ export default function WorkspacePage() {
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [entryFile, setEntryFile] = useState<string>("index.html");
   const [prompt, setPrompt] = useState("");
+  const [agentMode, setAgentMode] = useState<AgentExecutionMode>("turbo-extreme");
   const [isAgentRunning, setIsAgentRunning] = useState(false);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [agentLogs, setAgentLogs] = useState<string[]>([]);
@@ -165,6 +202,18 @@ export default function WorkspacePage() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const quickPrompts = [
+    "Baue ein modernes Dashboard mit Login, Analytics und Dark Mode.",
+    "Refaktoriere den Code für bessere Performance und klare Struktur.",
+    "Füge Stripe-Checkout mit sauberem Error-Handling hinzu.",
+    "Erstelle responsive Landingpage + Kontaktformular mit Validierung.",
+    "Baue eine komplette SaaS-App mit Adminbereich, Billing und Analytics.",
+  ];
+
+  const applyQuickPrompt = useCallback((template: string) => {
+    setPrompt(template);
+    textareaRef.current?.focus();
+  }, []);
 
   const { data: project, isLoading: projectLoading } = useQuery<GeneratedApp>({
     queryKey: ["/api/projects", projectId],
@@ -254,17 +303,18 @@ export default function WorkspacePage() {
 
     setIsAgentRunning(true);
     setAgentSteps([]);
-    setAgentLogs([`> Agent started: "${prompt}"`]);
+    setAgentLogs([`> Agent started (${getModeLabel(agentMode)}): "${prompt}"`]);
     setBottomTab("agent");
 
     const currentPrompt = prompt;
+    const currentMode = agentMode;
     setPrompt("");
 
     try {
       const response = await fetch(`/api/projects/${projectId}/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: currentPrompt }),
+        body: JSON.stringify({ prompt: currentPrompt, mode: currentMode }),
         credentials: "include",
       });
 
@@ -305,6 +355,12 @@ export default function WorkspacePage() {
               setAgentLogs(prev => [...prev, `[${event.step!.status}] ${event.step!.description}`]);
             }
 
+            if (event.type === "meta") {
+              const modeLabel = getModeLabel(event.mode);
+              const modelLabel = event.model ? ` · ${event.model}` : "";
+              setAgentLogs(prev => [...prev, `> Mode: ${modeLabel}${modelLabel}`]);
+            }
+
             if (event.type === "result" && event.result) {
               setFiles(event.result.files);
               setEntryFile(event.result.entryFile);
@@ -321,6 +377,11 @@ export default function WorkspacePage() {
                   `Summary: ${event.result!.summary}`,
                 ]);
               }
+
+              if (event.result.model) {
+                const modeLabel = getModeLabel(event.result.mode);
+                setAgentLogs(prev => [...prev, `Model used: ${event.result!.model} (${modeLabel})`]);
+              }
             }
 
             if (event.type === "error") {
@@ -329,7 +390,8 @@ export default function WorkspacePage() {
             }
 
             if (event.type === "done") {
-              setAgentLogs(prev => [...prev, "> Agent finished"]);
+              const modeLabel = getModeLabel(event.mode ?? currentMode);
+              setAgentLogs(prev => [...prev, `> Agent finished (${modeLabel})`]);
             }
           } catch {}
         }
@@ -493,6 +555,13 @@ export default function WorkspacePage() {
           <Bot className="w-4 h-4 text-primary" />
           <span className="text-sm font-heading font-medium truncate max-w-[200px]" data-testid="text-project-name">{project.name}</span>
           <Badge variant="outline" className="text-[10px]">{project.appType}</Badge>
+          <Badge
+            variant="outline"
+            className={`text-[10px] gap-1 ${getModePillClass(agentMode)}`}
+          >
+            <Zap className="w-3 h-3" />
+            {getModeLabel(agentMode)}
+          </Badge>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -603,21 +672,59 @@ export default function WorkspacePage() {
 
                   <TabsContent value="agent" className="flex-1 m-0 min-h-0">
                     <ScrollArea className="h-full">
-                      <div className="p-2 space-y-1 text-xs font-mono">
-                        {agentSteps.map((step, i) => (
-                          <StepIndicator key={`${step.id}-${i}`} step={step} />
-                        ))}
-                        {agentSteps.length === 0 && !isAgentRunning && (
-                          <div className="text-muted-foreground py-2 text-center">
-                            Agent ready. Type a command below.
+                      <div className="p-3 space-y-3">
+                        <div className="rounded-lg border border-violet-500/20 bg-gradient-to-r from-slate-950/80 via-violet-950/40 to-slate-950/80 p-3">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={nemesisAgentAvatar}
+                              alt="Nemesis Agent"
+                              className="h-10 w-10 rounded-md border border-violet-500/40 bg-black/60 p-1"
+                              loading="lazy"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold tracking-wide text-violet-300">NEMESIS AGENT CONSOLE</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Cursor-style workflow, tuned for Nemesis speed and precision.
+                              </p>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={getModePillClass(agentMode)}
+                            >
+                              {getModeLabel(agentMode)}
+                            </Badge>
                           </div>
-                        )}
-                        {isAgentRunning && (
-                          <div className="flex items-center gap-2 text-primary py-1">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Working...</span>
-                          </div>
-                        )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          {quickPrompts.map((template) => (
+                            <button
+                              key={template}
+                              type="button"
+                              onClick={() => applyQuickPrompt(template)}
+                              className="rounded-md border border-border/70 bg-card/40 px-2 py-1 text-[10px] text-muted-foreground hover-elevate hover:text-foreground"
+                            >
+                              {template}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="space-y-1.5 text-xs font-mono">
+                          {agentSteps.map((step, i) => (
+                            <StepIndicator key={`${step.id}-${i}`} step={step} />
+                          ))}
+                          {agentSteps.length === 0 && !isAgentRunning && (
+                            <div className="rounded-md border border-dashed border-border/60 bg-card/20 px-3 py-4 text-center text-muted-foreground">
+                              Agent ready. Beschreibe einfach dein Feature und starte.
+                            </div>
+                          )}
+                          {isAgentRunning && (
+                            <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-primary">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Agent läuft auf Hochtouren...</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </ScrollArea>
                   </TabsContent>
@@ -678,29 +785,102 @@ export default function WorkspacePage() {
                 </Tabs>
 
                 <div className="p-2 border-t bg-card/30">
-                  <div className="flex gap-1.5">
-                    <Textarea
-                      ref={textareaRef}
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder={isAgentRunning ? "Agent working..." : 'Tell the agent what to build... (e.g. "Add a contact form with validation")'}
-                      className="min-h-[48px] max-h-[120px] text-sm resize-none bg-card/50"
-                      disabled={isAgentRunning}
-                      data-testid="input-agent-prompt"
-                    />
-                    <Button
-                      size="icon"
-                      onClick={runAgent}
-                      disabled={!prompt.trim() || isAgentRunning}
-                      data-testid="button-send-agent"
-                    >
-                      {isAgentRunning ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                    </Button>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="inline-flex items-center rounded-md border border-border/70 bg-card/50 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setAgentMode("standard")}
+                        className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                          agentMode === "standard"
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        disabled={isAgentRunning}
+                      >
+                        Standard
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAgentMode("turbo")}
+                        className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                          agentMode === "turbo"
+                            ? "bg-violet-500/20 text-violet-300"
+                            : "text-muted-foreground hover:text-violet-300"
+                        }`}
+                        disabled={isAgentRunning}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          <Zap className="h-3 w-3" />
+                          Turbo
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAgentMode("turbo-extreme")}
+                        className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                          agentMode === "turbo-extreme"
+                            ? "bg-fuchsia-500/20 text-fuchsia-300"
+                            : "text-muted-foreground hover:text-fuchsia-300"
+                        }`}
+                        disabled={isAgentRunning}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          <Zap className="h-3 w-3" />
+                          Extreme
+                        </span>
+                      </button>
+                    </div>
+                    <span className={`text-[10px] ${isAgentRunning ? "text-primary" : "text-muted-foreground"}`}>
+                      {isAgentRunning
+                        ? "Agent arbeitet..."
+                        : agentMode === "turbo-extreme"
+                          ? "Turbo Extreme: maximale Geschwindigkeit"
+                          : agentMode === "turbo"
+                            ? "Turbo: schnelle Iterationen"
+                            : "Standard: maximal gründlich"}
+                    </span>
+                  </div>
+
+                  <div className="rounded-lg border border-violet-500/20 bg-gradient-to-r from-black/30 via-card/60 to-black/30 p-2">
+                    <div className="flex gap-2">
+                      <Textarea
+                        ref={textareaRef}
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={
+                          isAgentRunning
+                            ? "Agent working..."
+                            : agentMode === "turbo-extreme"
+                              ? 'Turbo Extreme: "Baue eine komplette SaaS-Plattform mit Auth, Billing und Admin-Panel"'
+                              : agentMode === "turbo"
+                              ? 'Turbo-Modus: "Baue eine komplette Landingpage mit Formular und Dashboard"'
+                              : 'Beschreibe dein Ziel... (z. B. "Add a contact form with validation")'
+                        }
+                        className="min-h-[56px] max-h-[140px] resize-none border-none bg-transparent text-sm focus-visible:ring-0"
+                        disabled={isAgentRunning}
+                        data-testid="input-agent-prompt"
+                      />
+                      <Button
+                        size="icon"
+                        onClick={runAgent}
+                        disabled={!prompt.trim() || isAgentRunning}
+                        className={
+                          agentMode === "turbo-extreme"
+                            ? "bg-fuchsia-600 hover:bg-fuchsia-500 text-white"
+                            : agentMode === "turbo"
+                              ? "bg-violet-600 hover:bg-violet-500 text-white"
+                              : ""
+                        }
+                        data-testid="button-send-agent"
+                      >
+                        {isAgentRunning ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -16,13 +16,16 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-nemesis}:${POSTGRES_PASSWORD:-nemesis_secure_pw_2026}@db:5432/${POSTGRES_DB:-nemesisai}
       - SESSION_SECRET=${SESSION_SECRET}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - AI_INTEGRATIONS_OPENAI_API_KEY=${AI_INTEGRATIONS_OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - SUPERADMIN_EMAILS=${SUPERADMIN_EMAILS:-}
       - PREMIUM_EMAILS=${PREMIUM_EMAILS:-}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - APP_DOMAIN=${APP_DOMAIN:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-}
+      - SELF_HOST_OPEN_ACCESS=${SELF_HOST_OPEN_ACCESS:-true}
+      - AUTO_DB_PUSH=${AUTO_DB_PUSH:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -45,18 +48,24 @@ services:
       timeout: 5s
       retries: 5
 
-  nginx:
-    image: nginx:alpine
-    container_name: nemesisai-nginx
+  proxy:
+    image: caddy:2.10-alpine
+    container_name: nemesisai-proxy
     restart: always
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - APP_DOMAIN=${APP_DOMAIN:-}
+      - ACME_EMAIL=${ACME_EMAIL:-}
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - app
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
